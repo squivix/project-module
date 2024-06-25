@@ -1,115 +1,123 @@
-import os
-
-import cv2
-import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, random_split
+from torchvision import datasets, models, transforms
 import matplotlib.pyplot as plt
-from skimage import measure
-import shutil
 import os
 
-if hasattr(os, 'add_dll_directory'):
-    # Windows
-    OPENSLIDE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                  "libs/openslide-bin-4.0.0.3-windows-x64/bin")
-    with os.add_dll_directory(OPENSLIDE_PATH):
-        import openslide
-else:
-    import openslide
+# Define the data transformations
+data_transforms = {
+    'train': transforms.Compose([
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]),
+    'val': transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]),
+}
 
+data_dir = 'input/DeepHP'
+dataset = datasets.ImageFolder(data_dir, data_transforms['train'])
 
-def downsample_image(image, level):
-    """Downsample the image to a manageable size."""
-    ds_factor = 2 ** level
-    return cv2.resize(image, (image.shape[1] // ds_factor, image.shape[0] // ds_factor))
+# Split the dataset into training and validation sets
+train_size = int(0.8 * len(dataset))
+val_size = len(dataset) - train_size
+train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
+# Define the dataloaders
+dataloaders = {
+    'train': DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4),
+    'val': DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
+}
 
-def display_image(image, title="image"):
-    """Display the image with a title."""
-    plt.figure(figsize=(10, 10))
-    plt.title(title)
-    plt.imshow(image, cmap='gray')
-    plt.axis('off')
-    plt.show()
+# Define the device
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+# Load the pretrained ResNet18 model
+model = models.resnet18(pretrained=True)
 
-def split_image_into_grid(image, cell_width, cell_height, output_dir):
-    height, width, _ = image.shape
-    pad_height = (cell_height - (height % cell_height)) % cell_height
-    pad_width = (cell_width - (width % cell_width)) % cell_width
+# Modify the final layer for binary classification
+num_ftrs = model.fc.in_features
+model.fc = nn.Linear(num_ftrs, 2)
+model = model.to(device)
 
-    pad_color = [241, 241, 241, 255]  # White with full opacity
-    padded_image = cv2.copyMakeBorder(image, 0, pad_height, 0, pad_width, cv2.BORDER_CONSTANT, value=pad_color)
-    new_height, new_width, _ = padded_image.shape
-    rows = new_height // cell_height
-    cols = new_width // cell_width
-    annotated_image = padded_image.copy()
+# Define the loss function and optimizer
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        for row in range(rows):
-            for col in range(cols):
-                # Calculate the coordinates of the current cell
-                y1 = row * cell_height
-                y2 = y1 + cell_height
-                x1 = col * cell_width
-                x2 = x1 + cell_width
+# Training function
+def train_model(model, criterion, optimizer, num_epochs=25):
+    train_loss_history = []
+    val_loss_history = []
 
-                # Crop the cell from the image
-                cell = padded_image[y1:y2, x1:x2]
+    for epoch in range(num_epochs):
+        print(f'Epoch {epoch}/{num_epochs - 1}')
+        print('-' * 10)
 
-                # Save the cell as a separate image
-                cell_filename = f"{output_dir}/cell_{row:06d}_{col:06d}.png"
-                cv2.imwrite(cell_filename, cell)
-                cv2.rectangle(annotated_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                print(f"Saved {cell_filename}")
+        # Each epoch has a training and validation phase
+        for phase in ['train', 'val']:
+            if phase == 'train':
+                model.train()  # Set model to training mode
+            else:
+                model.eval()   # Set model to evaluate mode
 
-    return annotated_image
+            running_loss = 0.0
+            running_corrects = 0
 
+            # Iterate over data.
+            for inputs, labels in dataloaders[phase]:
+                inputs = inputs.to(device)
+                labels = labels.to(device)
 
-def main():
-    svs_file = "input/522934.svs"
-    output_dir = "output/segments"
-    level = 1
+                # Zero the parameter gradients
+                optimizer.zero_grad()
 
-    shutil.rmtree(output_dir)
-    os.mkdir(output_dir)
-    slide = openslide.OpenSlide(svs_file)
-    ds_image = np.array(slide.read_region((0, 0), level, slide.level_dimensions[level]))
+                # Forward
+                # Track history if only in train
+                with torch.set_grad_enabled(phase == 'train'):
+                    outputs = model(inputs)
+                    _, preds = torch.max(outputs, 1)
+                    loss = criterion(outputs, labels)
 
-    gray_image = cv2.cvtColor(ds_image, cv2.COLOR_BGR2GRAY)
-    _, binary_image = cv2.threshold(gray_image, 200, 255, cv2.THRESH_BINARY_INV)
-    labels = measure.label(binary_image, connectivity=2)
-    properties = measure.regionprops(labels)
-    del ds_image
-    del gray_image
-    del binary_image
+                    # Backward + optimize only if in training phase
+                    if phase == 'train':
+                        loss.backward()
+                        optimizer.step()
 
-    W, H = slide.level_dimensions[0]
-    w, h = slide.level_dimensions[level]
-    scale_factor = W / w
-    min_blob_area = 50_000
-    large_blobs = [prop for prop in properties if prop.area >= min_blob_area]
-    # annotated_image = np.copy(ds_image)
-    for i, blob_props in enumerate(large_blobs):
-        minr, minc, maxr, maxc = blob_props.bbox
-        minr = int(minr * scale_factor)
-        maxr = int(maxr * scale_factor)
-        minc = int(minc * scale_factor)
-        maxc = int(maxc * scale_factor)
+                # Statistics
+                running_loss += loss.item() * inputs.size(0)
+                running_corrects += torch.sum(preds == labels.data)
 
-        blob_image = np.array(
-            slide.read_region((minc, minr), 0, (maxc - minc, maxr - minr)))  # ds_image[minr:maxr, minc:maxc]
-        annotated_blob_image = (
-            split_image_into_grid(blob_image, 256, 256, os.path.join(output_dir, f"blob_{i:03d}"))
-        )
+            epoch_loss = running_loss / len(dataloaders[phase].dataset)
+            epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
 
-        # cv2.rectangle(annotated_image, (minc, minr), (maxc, maxr), (255, 0, 0), 2)
+            if phase == 'train':
+                train_loss_history.append(epoch_loss)
+            else:
+                val_loss_history.append(epoch_loss)
 
-        # display_image(annotated_blob_image, title=f"{annotated_blob_image.shape}")
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
-    # display_image(f'Annotated image', annotated_image)
+            print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
+        print()
 
-if __name__ == '__main__':
-    main()
+    return model, train_loss_history, val_loss_history
+
+# Train the model
+model, train_loss_history, val_loss_history = train_model(model, criterion, optimizer, num_epochs=25)
+
+# Plot the training and validation loss
+plt.plot(train_loss_history, label='Train Loss')
+plt.plot(val_loss_history, label='Val Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+# Save the trained model
+torch.save(model.state_dict(), 'resnet18_binary_classification.pth')
