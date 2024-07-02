@@ -23,7 +23,7 @@ def main():
                                   target_transform=transforms.Lambda(lambda x: x + 1)) # hack
     batch_size = 512
 
-    class_size = 1000
+    class_size = 100_000
     dataset = ConcatDataset([
         Subset(dataset_class_0, np.random.choice(len(dataset_class_0), class_size, replace=False)),
         Subset(dataset_class_1, np.random.choice(len(dataset_class_1), class_size, replace=False)),
@@ -47,7 +47,7 @@ def main():
                                      max_epochs=50)
     print(model_metrics)
     plot_model_metrics(model_metrics)
-    torch.save(model.state_dict(), "./model3.bin")
+    torch.save(model.state_dict(), "./model4.bin")
 
 
 

@@ -14,7 +14,6 @@ class CnnModel(nn.Module):
             nn.ReLU(),
             nn.Conv2d(16, 16, kernel_size=5, stride=1, padding="valid"),
             nn.ReLU(),
-            nn.AvgPool2d(kernel_size=2, stride=2),
 
             nn.Conv2d(16, 16, kernel_size=3, stride=3, padding="valid"),
             nn.ReLU(),
@@ -22,14 +21,13 @@ class CnnModel(nn.Module):
             nn.ReLU(),
             nn.Conv2d(16, 16, kernel_size=3, stride=3, padding="valid"),
             nn.ReLU(),
-            nn.AvgPool2d(kernel_size=2, stride=2),
 
             nn.Flatten(start_dim=1),
-            nn.Linear(64, 32),
+            nn.Linear(1296, 200),
             nn.ReLU(),
-            nn.Linear(32, 16),
+            nn.Linear(200, 50),
             nn.ReLU(),
-            nn.Linear(16, output_dim),
+            nn.Linear(50, output_dim),
         )
 
     def forward(self, x):
