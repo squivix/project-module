@@ -10,7 +10,8 @@ def plot_model_metrics(model_metrics):
     plt.plot(model_metrics["train_accuracies"], label="train accuracy")
     plt.plot(model_metrics["test_accuracies"], label="test accuracy")
     plt.legend()
-
+    plt.grid()
+    plt.show()
     plt.title('Loss & Accuracy in training and testing by epoch')
     plt.xlabel('Epoch')
 
