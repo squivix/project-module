@@ -20,7 +20,7 @@ def main():
     ])
     dataset_class_0 = ImageFolder(root=f"{data_dir}/Negative", transform=transform)
     dataset_class_1 = ImageFolder(root=f"{data_dir}/Positive", transform=transform,
-                                  target_transform=transforms.Lambda(lambda x: x + 1)) # hack
+                                  target_transform=transforms.Lambda(lambda x: x + 1))  # hack
     batch_size = 512
 
     class_size = 100_000
@@ -47,8 +47,7 @@ def main():
                                      max_epochs=50)
     print(model_metrics)
     plot_model_metrics(model_metrics)
-    torch.save(model.state_dict(), "./model4.bin")
-
+    torch.save(model.state_dict(), "./model5.bin")
 
 
 if __name__ == "__main__":

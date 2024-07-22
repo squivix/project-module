@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 
 
@@ -32,3 +33,7 @@ class CnnModel(nn.Module):
 
     def forward(self, x):
         return self.model.forward(x)
+
+    def predict(self, logits):
+        # logits = self.forward(x)
+        return (torch.sigmoid(logits) > 0.5).float()#[:,0]
