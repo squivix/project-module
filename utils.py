@@ -2,18 +2,26 @@ import math
 
 import torch
 from matplotlib import pyplot as plt
+from torchvision.transforms import v2
 
 
 def plot_model_metrics(model_metrics):
-    plt.plot(model_metrics["train_losses"], label="train loss")
-    plt.plot(model_metrics["test_losses"], label="test loss")
-    plt.plot(model_metrics["train_accuracies"], label="train accuracy")
-    plt.plot(model_metrics["test_accuracies"], label="test accuracy")
-    plt.legend()
-    plt.grid()
+    fig, ax = plt.subplots(nrows=2, figsize=(10, 10))
+
+    ax[0].plot(model_metrics[f"test_loss"], label=f"train loss")
+    ax[0].plot(model_metrics[f"train_loss"], label=f"train loss")
+    ax[0].legend()
+    ax[0].grid()
+    ax[0].set_xlabel('Epoch')
+    ax[0].set_title('Loss in training and testing by epoch')
+
+    for metric in ["accuracy", "precision", "recall", "f1"]:
+        ax[1].plot(model_metrics[f"test_{metric}"], label=f"test {metric}")
+    ax[1].legend()
+    ax[1].grid()
+    ax[1].set_title('Confusion metrics in testing by epoch')
+    ax[1].set_xlabel('Epoch')
     plt.show()
-    plt.title('Loss & Accuracy in training and testing by epoch')
-    plt.xlabel('Epoch')
 
 
 def mlp_apply(model, test_indexes, test_dataset):
@@ -45,3 +53,34 @@ def mlp_apply(model, test_indexes, test_dataset):
     plt.show()
 
     return
+
+
+def divide(num, donim):
+    if num == 0:
+        return 0.0
+    return num / donim
+
+
+def calc_binary_classification_metrics(true_labels, predicted_labels):
+    tp = torch.sum((predicted_labels == 1) & (true_labels == 1)).item()
+    tn = torch.sum((predicted_labels == 0) & (true_labels == 0)).item()
+    fp = torch.sum((predicted_labels == 1) & (true_labels == 0)).item()
+    fn = torch.sum((predicted_labels == 0) & (true_labels == 1)).item()
+    accuracy = divide(tp + tn, (tp + tn + fp + fn))
+    precision = divide(tp, (tp + fp))
+    recall = divide(tp, (tp + fn))
+    f1 = divide(2 * precision * recall, (precision + recall))
+    return accuracy, precision, recall, f1
+
+
+def rescale_data_transform(old_min, old_max, new_min, new_max, should_round=False):
+    old_range = old_max - old_min
+    new_range = new_max - new_min
+
+    def rescale_lambda(old_val):
+        new_val = ((old_val - old_min) * new_range) / old_range + new_min
+        if should_round:
+            new_val = torch.round(new_val)
+        return new_val
+
+    return v2.Lambda(rescale_lambda)

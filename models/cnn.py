@@ -1,8 +1,10 @@
+import torch
 from torch import nn
+import torch.nn.functional as F
 
 
 class CnnModel(nn.Module):
-    def __init__(self, output_dim, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = nn.Sequential(
             nn.Conv2d(3, 3, kernel_size=1, stride=1, padding=0),
@@ -27,8 +29,15 @@ class CnnModel(nn.Module):
             nn.ReLU(),
             nn.Linear(200, 50),
             nn.ReLU(),
-            nn.Linear(50, output_dim),
+            nn.Linear(50, 1),
         )
 
     def forward(self, x):
         return self.model.forward(x)
+
+    def loss_function(self, logits, target):
+        return F.binary_cross_entropy_with_logits(logits.squeeze(1), target.float())
+
+    def predict(self, logits):
+        with torch.no_grad():
+            return (torch.sigmoid(logits) > 0.5).float()
