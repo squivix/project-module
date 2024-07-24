@@ -1,19 +1,28 @@
+import os
+import time
+
 import numpy as np
 import torch
-from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
 from torch.optim import Adam
-
-from utils import calc_binary_classification_metrics
 from tqdm import tqdm
 
-def mlp_train(model, train_loader, test_loader, device, learning_rate=0.001, max_epochs=1000):
-    optimizer = Adam(model.parameters(), lr=learning_rate)
+from utils import calc_binary_classification_metrics
+
+
+def train_classifier(model, train_loader, test_loader, device, learning_rate=0.001, weight_decay=0.00001,
+                     max_epochs=1000,
+                     checkpoint_every=100):
+    optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     metrics = ["accuracy", "loss", "precision", "recall", "f1"]
     train_metrics = {m: [] for m in metrics}
     test_metrics = {m: [] for m in metrics}
 
-    for epoch in tqdm(range(max_epochs)):
-        # print(f"{epoch}/{max_epochs}")
+    training_start_time = int(time.time() * 1000)
+    checkpoint_dir = f"checkpoints/classifier/{training_start_time}"
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    for epoch in range(max_epochs):
+        if epoch % checkpoint_every == 0:
+            torch.save(model, f"{checkpoint_dir}/{epoch}.pickle")
         batches = iter(train_loader)
 
         batch_train_metrics = {m: np.empty(len(batches)) for m in metrics}
@@ -58,8 +67,10 @@ def mlp_train(model, train_loader, test_loader, device, learning_rate=0.001, max
             for m in metrics:
                 test_metrics[m].append(batch_test_metrics[m].mean())
 
+        print(f"{epoch + 1:,}/{max_epochs:,}: {", ".join([f"{k}:{v[-1]:.2f}" for k, v in test_metrics.items()])}")
         model.train()
 
+    torch.save(model, f"{checkpoint_dir}/final.pickle")
     return model, {
         **{f"train_{m}": train_metrics[m] for m in metrics},
         **{f"test_{m}": test_metrics[m] for m in metrics}
