@@ -4,7 +4,6 @@ import time
 import numpy as np
 import torch
 from torch.optim import Adam
-from tqdm import tqdm
 
 from utils import calc_binary_classification_metrics
 
@@ -49,7 +48,8 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
         model.eval()
         with torch.no_grad():
             test_batches = iter(test_loader)
-            batch_test_metrics = {m: np.empty(len(batches)) for m in metrics}
+
+            batch_test_metrics = {m: np.empty(len(test_batches)) for m in metrics}
             for i, (x_test, y_test) in enumerate(test_batches):
                 x_test = x_test.to(device)
                 y_test = y_test.to(device)
