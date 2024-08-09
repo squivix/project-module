@@ -48,7 +48,7 @@ from datasets.ImagePathDataset import LabeledImageDataset
 #         return self.dataset_size
 
 
-def generate_balanced_dataset(root_dir, class_limit=float("inf"), test_ratio=0.3):
+def generate_balanced_dataset(root_dir, training_limit_per_class: int = float("inf"), test_ratio=0.3):
     # Load data
     samples = []
     labels = []
@@ -66,11 +66,11 @@ def generate_balanced_dataset(root_dir, class_limit=float("inf"), test_ratio=0.3
     for sample in train_samples:
         training_samples_by_class[sample[1]].append(sample)
     min_class_size = min(len(samples) for samples in training_samples_by_class.values())
-    class_limit = min(min_class_size, class_limit)
+    training_limit_per_class = min(min_class_size, training_limit_per_class)
 
     undersampled_train_samples = []
-    for samples in training_samples_by_class.values():
-        undersampled_train_samples.extend(samples[:class_limit])
+    for class_samples in training_samples_by_class.values():
+        undersampled_train_samples.extend(class_samples[:training_limit_per_class])
 
     training_dataset = LabeledImageDataset(undersampled_train_samples)
     validation_dataset = LabeledImageDataset(test_samples)

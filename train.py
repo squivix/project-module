@@ -4,17 +4,18 @@ import time
 import numpy as np
 import torch
 from torch.optim import Adam
+from tqdm import tqdm
 
 from utils import calc_binary_classification_metrics
 
 
 def train_classifier(model, train_loader, test_loader, device, learning_rate=0.001, weight_decay=0.00001,
                      max_epochs=1000,
-                     checkpoint_every=100):
+                     checkpoint_every=100, eval_every=1):
     optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     metrics = ["accuracy", "loss", "precision", "recall", "f1"]
-    train_metrics = {m: [] for m in metrics}
-    test_metrics = {m: [] for m in metrics}
+    train_metrics = {m: [] for m in [*metrics, "epoch"]}
+    test_metrics = {m: [] for m in [*metrics, "epoch"]}
 
     training_start_time = int(time.time() * 1000)
     checkpoint_dir = f"checkpoints/classifier/{training_start_time}"
@@ -25,7 +26,7 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
         batches = iter(train_loader)
 
         batch_train_metrics = {m: np.empty(len(batches)) for m in metrics}
-        for i, (batch_x, batch_y) in enumerate(batches):
+        for i, (batch_x, batch_y) in enumerate(tqdm(batches, desc=f"Epoch {epoch + 1:,} training")):
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
             logits = model.forward(batch_x)
@@ -44,34 +45,40 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
 
         for m in metrics:
             train_metrics[m].append(batch_train_metrics[m].mean())
+        train_metrics["epoch"].append(epoch)
 
-        model.eval()
-        with torch.no_grad():
-            test_batches = iter(test_loader)
+        if epoch % eval_every == 0:
+            model.eval()
+            with torch.no_grad():
+                test_batches = iter(test_loader)
 
-            batch_test_metrics = {m: np.empty(len(test_batches)) for m in metrics}
-            for i, (x_test, y_test) in enumerate(test_batches):
-                x_test = x_test.to(device)
-                y_test = y_test.to(device)
-                test_logits = model.forward(x_test)
-                test_loss = model.loss_function(test_logits, y_test)
-                test_preds = model.predict(test_logits)
-                test_accuracy, test_precision, test_recall, test_f1 = calc_binary_classification_metrics(y_test,
-                                                                                                         test_preds)
+                batch_test_metrics = {m: np.empty(len(test_batches)) for m in metrics}
+                for i, (x_test, y_test) in enumerate(tqdm(test_batches, desc=f"Epoch {epoch + 1:,} testing")):
+                    x_test = x_test.to(device)
+                    y_test = y_test.to(device)
+                    test_logits = model.forward(x_test)
+                    test_loss = model.loss_function(test_logits, y_test)
+                    test_preds = model.predict(test_logits)
+                    test_accuracy, test_precision, test_recall, test_f1 = calc_binary_classification_metrics(y_test,
+                                                                                                             test_preds)
 
-                batch_test_metrics["loss"][i] = test_loss
-                batch_test_metrics["accuracy"][i] = test_accuracy
-                batch_test_metrics["precision"][i] = test_precision
-                batch_test_metrics["recall"][i] = test_accuracy
-                batch_test_metrics["f1"][i] = test_f1
-            for m in metrics:
-                test_metrics[m].append(batch_test_metrics[m].mean())
-
-        print(f"{epoch + 1:,}/{max_epochs:,}: {", ".join([f"{k}:{v[-1]:.2f}" for k, v in test_metrics.items()])}")
-        model.train()
+                    batch_test_metrics["loss"][i] = test_loss
+                    batch_test_metrics["accuracy"][i] = test_accuracy
+                    batch_test_metrics["precision"][i] = test_precision
+                    batch_test_metrics["recall"][i] = test_accuracy
+                    batch_test_metrics["f1"][i] = test_f1
+                for m in metrics:
+                    test_metrics[m].append(batch_test_metrics[m].mean())
+                test_metrics["epoch"].append(epoch)
+                print(
+                    f"{epoch + 1:,}/{max_epochs:,}: {", ".join([f"{k}:{v[-1]:.2f}" for k, v in test_metrics.items()])}")
+            model.train()
 
     torch.save(model, f"{checkpoint_dir}/final.pickle")
     return model, {
         **{f"train_{m}": train_metrics[m] for m in metrics},
-        **{f"test_{m}": test_metrics[m] for m in metrics}
+        **{f"test_{m}": test_metrics[m] for m in metrics},
+
+        "train_epoch": train_metrics["epoch"],
+        "test_epoch": test_metrics["epoch"],
     }

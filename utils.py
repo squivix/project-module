@@ -8,15 +8,15 @@ from torchvision.transforms import v2
 def plot_model_metrics(model_metrics):
     fig, ax = plt.subplots(nrows=2, figsize=(10, 10))
 
-    ax[0].plot(model_metrics[f"train_loss"], label=f"train loss")
-    ax[0].plot(model_metrics[f"test_loss"], label=f"test loss")
+    ax[0].plot(model_metrics["train_epoch"], model_metrics[f"train_loss"], label=f"train loss")
+    ax[0].plot(model_metrics["test_epoch"], model_metrics[f"test_loss"], label=f"test loss")
     ax[0].legend()
     ax[0].grid()
     ax[0].set_xlabel('Epoch')
     ax[0].set_title('Loss in training and testing by epoch')
 
     for metric in ["accuracy", "precision", "recall", "f1"]:
-        ax[1].plot(model_metrics[f"test_{metric}"], label=f"test {metric}")
+        ax[1].plot(model_metrics["test_epoch"], model_metrics[f"test_{metric}"], label=f"test {metric}")
     ax[1].legend()
     ax[1].grid()
     ax[1].set_title('Confusion metrics in testing by epoch')
