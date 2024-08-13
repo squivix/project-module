@@ -11,7 +11,7 @@ class LabeledImageDataset(Dataset):
         self.transform = v2.Compose([
             v2.ToImage(),
             v2.Resize((256, 256)),
-            rescale_data_transform(0, 255, -1, +1)
+            rescale_data_transform(0, 255, 0, 1)
         ])
 
     def __len__(self):
