@@ -28,3 +28,12 @@ class LabeledImageDataset(Dataset):
             image = self.transform(image)
 
         return image, label
+
+    def to_dict(self):
+        return {
+            "samples": self.samples
+        }
+
+    @staticmethod
+    def from_dict(dictionary):
+        return LabeledImageDataset(dictionary["samples"])

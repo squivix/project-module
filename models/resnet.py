@@ -8,11 +8,15 @@ from torchvision.models import ResNet50_Weights
 class Resnet50Model(nn.Module):
     def __init__(self, dropout=0.2, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.model = torchvision.models.resnet50(weights=ResNet50_Weights.DEFAULT)
-        self.model.fc = nn.Linear(2048, 1, bias=True)
+        self.pretrained_model = torchvision.models.resnet50(weights=ResNet50_Weights.DEFAULT)
+        for param in self.pretrained_model.parameters():
+            param.requires_grad = False
+
+        self.classifier = nn.Linear(1000, 1)
 
     def forward(self, x):
-        return  self.model.forward(x)
+        pre_logits = self.pretrained_model.forward(x)
+        return self.classifier.forward(pre_logits)
 
     def loss_function(self, logits, target):
         return F.binary_cross_entropy_with_logits(logits.squeeze(1), target.float())

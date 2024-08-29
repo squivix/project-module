@@ -1,3 +1,4 @@
+import json
 import os
 import time
 
@@ -18,8 +19,14 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
     test_metrics = {m: [] for m in [*metrics, "epoch"]}
 
     training_start_time = int(time.time() * 1000)
-    checkpoint_dir = f"checkpoints/classifier/{training_start_time}"
+    checkpoint_dir = f"checkpoints/{model.__class__.__name__}/{training_start_time}"
     os.makedirs(checkpoint_dir, exist_ok=True)
+
+    with  open(f"{checkpoint_dir}/train_dataset.json", 'w') as temp_file:
+        json.dump(train_loader.dataset.to_dict(), temp_file)
+    with  open(f"{checkpoint_dir}/test_dataset.json", 'w') as temp_file:
+        json.dump(test_loader.dataset.to_dict(), temp_file)
+
     for epoch in range(max_epochs):
         if epoch % checkpoint_every == 0:
             torch.save(model, f"{checkpoint_dir}/{epoch}.pickle")
