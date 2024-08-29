@@ -1,8 +1,11 @@
 import math
 
+import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from torch.utils.data import DataLoader
 from torchvision.transforms import v2
+from tqdm import tqdm
 
 
 def plot_model_metrics(model_metrics):
@@ -53,6 +56,34 @@ def mlp_apply(model, test_indexes, test_dataset):
     plt.show()
 
     return
+
+
+def test_model(model, dataset, device, batch_size=128):
+    test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    metrics = ["accuracy", "loss", "precision", "recall", "f1"]
+    test_metrics = dict()
+    model.to(device)
+    model.eval()
+    with torch.no_grad():
+        test_batches = iter(test_loader)
+
+        batch_test_metrics = {m: np.empty(len(test_batches)) for m in metrics}
+        for i, (x_test, y_test) in enumerate(tqdm(test_batches, desc=f"Evaluating model")):
+            x_test = x_test.to(device)
+            y_test = y_test.to(device)
+            test_logits = model.forward(x_test)
+            test_loss = model.loss_function(test_logits, y_test)
+            test_preds = model.predict(test_logits)
+            test_accuracy, test_precision, test_recall, test_f1 = calc_binary_classification_metrics(y_test, test_preds)
+
+            batch_test_metrics["loss"][i] = test_loss
+            batch_test_metrics["accuracy"][i] = test_accuracy
+            batch_test_metrics["precision"][i] = test_precision
+            batch_test_metrics["recall"][i] = test_accuracy
+            batch_test_metrics["f1"][i] = test_f1
+        for m in metrics:
+            test_metrics[m] = batch_test_metrics[m].mean()
+    return test_metrics
 
 
 def divide(num, donim):

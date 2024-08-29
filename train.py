@@ -71,7 +71,7 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
                     test_metrics[m].append(batch_test_metrics[m].mean())
                 test_metrics["epoch"].append(epoch)
                 print(
-                    f"{epoch + 1:,}/{max_epochs:,}: {", ".join([f"{k}:{v[-1]:.2f}" for k, v in test_metrics.items()])}")
+                    f"{epoch + 1:,}/{max_epochs:,}: {", ".join([f"{k}:{v[-1]}" for k, v in test_metrics.items()])}")
             model.train()
 
     torch.save(model, f"{checkpoint_dir}/final.pickle")

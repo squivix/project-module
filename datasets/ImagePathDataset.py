@@ -10,7 +10,10 @@ class LabeledImageDataset(Dataset):
         self.samples = samples
         self.transform = v2.Compose([
             v2.ToImage(),
-            v2.Resize((256, 256)),
+            # v2.Resize((256, 256)),
+            v2.Resize(299),
+            v2.CenterCrop(299),
+
             rescale_data_transform(0, 255, 0, 1)
         ])
 
