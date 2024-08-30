@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from sklearn.model_selection import train_test_split
 
-from datasets.ImagePathDataset import LabeledImageDataset
+from datasets.LabeledImageDataset import LabeledImageDataset
 
 
 #
@@ -48,7 +48,7 @@ from datasets.ImagePathDataset import LabeledImageDataset
 #         return self.dataset_size
 
 
-def generate_balanced_dataset(root_dir, training_limit_per_class: int = float("inf"), test_ratio=0.3):
+def generate_balanced_dataset(root_dir, discard_ratio=0.0, test_ratio=0.3, undersample=False):
     # Load data
     samples = []
     labels = []
@@ -58,20 +58,25 @@ def generate_balanced_dataset(root_dir, training_limit_per_class: int = float("i
             samples.append((file_path, class_index))
             labels.append(class_index)
 
-    # Train test split
+    # Keep, discard split
+    if discard_ratio > 0:
+        samples, _, labels, _ = train_test_split(samples, labels, test_size=discard_ratio, stratify=labels)
+
+    # Train, test split
     train_samples, test_samples, _, _ = train_test_split(samples, labels, test_size=test_ratio, stratify=labels)
 
     # Undersample training data
-    training_samples_by_class = defaultdict(list)
-    for sample in train_samples:
-        training_samples_by_class[sample[1]].append(sample)
-    min_class_size = min(len(samples) for samples in training_samples_by_class.values())
-    training_limit_per_class = min(min_class_size, training_limit_per_class)
+    if undersample:
+        training_samples_by_class = defaultdict(list)
+        for sample in train_samples:
+            training_samples_by_class[sample[1]].append(sample)
+        min_class_size = min(len(samples) for samples in training_samples_by_class.values())
 
-    undersampled_train_samples = []
-    for class_samples in training_samples_by_class.values():
-        undersampled_train_samples.extend(class_samples[:training_limit_per_class])
+        undersampled_train_samples = []
+        for class_samples in training_samples_by_class.values():
+            undersampled_train_samples.extend(class_samples[:min_class_size])
+        train_samples = undersampled_train_samples
 
-    training_dataset = LabeledImageDataset(undersampled_train_samples)
+    training_dataset = LabeledImageDataset(train_samples)
     validation_dataset = LabeledImageDataset(test_samples)
     return training_dataset, validation_dataset

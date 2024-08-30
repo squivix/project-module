@@ -60,7 +60,7 @@ def mlp_apply(model, test_indexes, test_dataset):
 
 def test_model(model, dataset, device, batch_size=128):
     test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    metrics = ["accuracy", "loss", "precision", "recall", "f1"]
+    metrics = ["accuracy", "loss", "precision", "recall", "f1", "mcc"]
     test_metrics = dict()
     model.to(device)
     model.eval()
@@ -74,13 +74,15 @@ def test_model(model, dataset, device, batch_size=128):
             test_logits = model.forward(x_test)
             test_loss = model.loss_function(test_logits, y_test)
             test_preds = model.predict(test_logits)
-            test_accuracy, test_precision, test_recall, test_f1 = calc_binary_classification_metrics(y_test, test_preds)
+            test_accuracy, test_precision, test_recall, test_f1, test_mcc = calc_binary_classification_metrics(y_test,
+                                                                                                               test_preds)
 
             batch_test_metrics["loss"][i] = test_loss
             batch_test_metrics["accuracy"][i] = test_accuracy
             batch_test_metrics["precision"][i] = test_precision
             batch_test_metrics["recall"][i] = test_accuracy
             batch_test_metrics["f1"][i] = test_f1
+            batch_test_metrics["mcc"][i] = test_mcc
         for m in metrics:
             test_metrics[m] = batch_test_metrics[m].mean()
     return test_metrics
@@ -97,11 +99,14 @@ def calc_binary_classification_metrics(true_labels, predicted_labels):
     tn = torch.sum((predicted_labels == 0) & (true_labels == 0)).item()
     fp = torch.sum((predicted_labels == 1) & (true_labels == 0)).item()
     fn = torch.sum((predicted_labels == 0) & (true_labels == 1)).item()
+
+
     accuracy = divide(tp + tn, (tp + tn + fp + fn))
     precision = divide(tp, (tp + fp))
     recall = divide(tp, (tp + fn))
     f1 = divide(2 * precision * recall, (precision + recall))
-    return accuracy, precision, recall, f1
+    mcc = divide((tp * tn) - (fp * fn), math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+    return accuracy, precision, recall, f1, mcc
 
 
 def rescale_data_transform(old_min, old_max, new_min, new_max, should_round=False):

@@ -12,11 +12,17 @@ class VggModel(nn.Module):
         for param in self.pretrained_model.parameters():
             param.requires_grad = False
 
-        self.classifier = nn.Linear(1000, 1)
+        self.model = nn.Sequential(
+            nn.Linear(1000, 1000),
+            nn.ReLU(),
+            nn.Linear(1000, 1000),
+            nn.ReLU(),
+            nn.Linear(1000, 1),
+        )
 
     def forward(self, x):
         pre_logits = self.pretrained_model.forward(x)
-        return self.classifier.forward(pre_logits)
+        return self.model.forward(pre_logits)
 
     def loss_function(self, logits, target):
         return F.binary_cross_entropy_with_logits(logits.squeeze(1), target.float())
