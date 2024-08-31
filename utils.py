@@ -1,23 +1,30 @@
 import math
-import random
 
+import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from torch.utils.data import DataLoader
 from torchvision.transforms import v2
-
-from models.cnn import CnnModel
+from tqdm import tqdm
 
 
 def plot_model_metrics(model_metrics):
-    plt.plot(model_metrics["train_losses"], label="train loss")
-    plt.plot(model_metrics["test_losses"], label="test loss")
-    plt.plot(model_metrics["train_accuracies"], label="train accuracy")
-    plt.plot(model_metrics["test_accuracies"], label="test accuracy")
-    plt.legend()
-    plt.grid()
+    fig, ax = plt.subplots(nrows=2, figsize=(10, 10))
+
+    ax[0].plot(model_metrics["train_epoch"], model_metrics[f"train_loss"], label=f"train loss")
+    ax[0].plot(model_metrics["test_epoch"], model_metrics[f"test_loss"], label=f"test loss")
+    ax[0].legend()
+    ax[0].grid()
+    ax[0].set_xlabel('Epoch')
+    ax[0].set_title('Loss in training and testing by epoch')
+
+    for metric in ["accuracy", "precision", "recall", "f1"]:
+        ax[1].plot(model_metrics["test_epoch"], model_metrics[f"test_{metric}"], label=f"test {metric}")
+    ax[1].legend()
+    ax[1].grid()
+    ax[1].set_title('Confusion metrics in testing by epoch')
+    ax[1].set_xlabel('Epoch')
     plt.show()
-    plt.title('Loss & Accuracy in training and testing by epoch')
-    plt.xlabel('Epoch')
 
 
 def mlp_apply(model, test_indexes, test_dataset):
@@ -51,6 +58,57 @@ def mlp_apply(model, test_indexes, test_dataset):
     return
 
 
+def test_model(model, dataset, device, batch_size=128):
+    test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    metrics = ["accuracy", "loss", "precision", "recall", "f1", "mcc"]
+    test_metrics = dict()
+    model.to(device)
+    model.eval()
+    with torch.no_grad():
+        test_batches = iter(test_loader)
+
+        batch_test_metrics = {m: np.empty(len(test_batches)) for m in metrics}
+        for i, (x_test, y_test) in enumerate(tqdm(test_batches, desc=f"Evaluating model")):
+            x_test = x_test.to(device)
+            y_test = y_test.to(device)
+            test_logits = model.forward(x_test)
+            test_loss = model.loss_function(test_logits, y_test)
+            test_preds = model.predict(test_logits)
+            test_accuracy, test_precision, test_recall, test_f1, test_mcc = calc_binary_classification_metrics(y_test,
+                                                                                                               test_preds)
+
+            batch_test_metrics["loss"][i] = test_loss
+            batch_test_metrics["accuracy"][i] = test_accuracy
+            batch_test_metrics["precision"][i] = test_precision
+            batch_test_metrics["recall"][i] = test_accuracy
+            batch_test_metrics["f1"][i] = test_f1
+            batch_test_metrics["mcc"][i] = test_mcc
+        for m in metrics:
+            test_metrics[m] = batch_test_metrics[m].mean()
+    return test_metrics
+
+
+def divide(num, donim):
+    if num == 0:
+        return 0.0
+    return num / donim
+
+
+def calc_binary_classification_metrics(true_labels, predicted_labels):
+    tp = torch.sum((predicted_labels == 1) & (true_labels == 1)).item()
+    tn = torch.sum((predicted_labels == 0) & (true_labels == 0)).item()
+    fp = torch.sum((predicted_labels == 1) & (true_labels == 0)).item()
+    fn = torch.sum((predicted_labels == 0) & (true_labels == 1)).item()
+
+
+    accuracy = divide(tp + tn, (tp + tn + fp + fn))
+    precision = divide(tp, (tp + fp))
+    recall = divide(tp, (tp + fn))
+    f1 = divide(2 * precision * recall, (precision + recall))
+    mcc = divide((tp * tn) - (fp * fn), math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)))
+    return accuracy, precision, recall, f1, mcc
+
+
 def rescale_data_transform(old_min, old_max, new_min, new_max, should_round=False):
     old_range = old_max - old_min
     new_range = new_max - new_min
@@ -62,36 +120,3 @@ def rescale_data_transform(old_min, old_max, new_min, new_max, should_round=Fals
         return new_val
 
     return v2.Lambda(rescale_lambda)
-
-
-def apply_model(model: CnnModel, test_dataset, indexes, device):
-    examples = torch.stack([test_dataset[idx] for idx in indexes]).to(device)
-    with torch.no_grad():
-        test_logits = model.forward(examples)
-        predicted_labels = model.predict(test_logits)
-
-    plot_grid_size = int(math.ceil(math.sqrt(len(examples))))
-    text_offset = 0.075
-    fig, axes = plt.subplots(plot_grid_size, plot_grid_size, figsize=(10, 10))
-    axes = axes.flatten()
-    transform = v2.Lambda(lambda t: (t / 255))
-    for i, example_index in enumerate(indexes):
-        image = transform(test_dataset.get_raw_image(example_index))
-        axes[i].imshow(image.permute(1, 2, 0).numpy(force=True), cmap='gray')
-        axes[i].axis('off')  # Hide axes
-        predicted_label_indexes = predicted_labels[i].nonzero(as_tuple=True)[0].tolist()
-
-        axes[i].annotate(f"{example_index} {test_dataset.image_file_names[example_index]}", (0.5, -0.1), xycoords='axes fraction',
-                         ha='center', va='top', fontsize=10, color='black')
-        for j, label_idx in enumerate(predicted_label_indexes):
-            axes[i].annotate(test_dataset.classes[label_idx], (0.5, -0.2 - (j * text_offset)), xycoords='axes fraction',
-                             ha='center', va='top', fontsize=10,
-                             color='red')
-
-    for i in range(len(examples), plot_grid_size ** 2):
-        axes[i].axis('off')
-
-    plt.tight_layout()
-    plt.show()
-
-
