@@ -94,7 +94,11 @@ def generate_balanced_dataset(discard_ratio=0.0, test_ratio=0.3, undersample=Fal
         samples, _, labels, _ = train_test_split(samples, labels, test_size=discard_ratio, stratify=labels)
 
     # Train, test split
-    train_samples, test_samples, _, _ = train_test_split(samples, labels, test_size=test_ratio, stratify=labels)
+    if test_ratio > 0:
+        train_samples, test_samples, _, _ = train_test_split(samples, labels, test_size=test_ratio, stratify=labels)
+    else:
+        train_samples = samples
+        test_samples = []
 
     # Undersample training data
     if undersample:

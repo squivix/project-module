@@ -1,25 +1,38 @@
+from itertools import chain, repeat
+
 import torch
+import torch.nn.functional as F
 from torch import nn
 
-import torch.nn.functional as F
 
 class MLPModel(nn.Module):
-    def __init__(self, in_features, dropout=0.2, *args, **kwargs):
+    def __init__(self, in_features, hidden_layers, neurons_per_layer, dropout=0.2, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = nn.Sequential(
-            nn.Linear(2048, 4096),
-            nn.ReLU(),
-            nn.Linear(4096, 4096),
-            nn.ReLU(),
-            nn.Linear(4096, 1),
+            *[nn.Linear(2048, neurons_per_layer),
+              nn.ReLU(),
+              nn.Dropout(dropout), ],
+            *chain(*repeat(
+                [
+                    nn.Linear(neurons_per_layer, neurons_per_layer),
+                    nn.ReLU(),
+                    nn.Dropout(dropout)
+                ], hidden_layers)),
+            nn.Linear(neurons_per_layer, 1),
+            nn.Sigmoid()
         )
 
     def forward(self, x):
         return self.model(x)
 
-    def loss_function(self, logits, target):
-        return F.binary_cross_entropy_with_logits(logits.squeeze(1), target.float())
+    def loss_function(self, output, target):
+        return F.binary_cross_entropy(output.squeeze(1), target.float())
 
-    def predict(self, logits):
+    def predict(self, prob):
         with torch.no_grad():
-            return (torch.sigmoid(logits) > 0.5).float()
+            return (prob > 0.5).float()
+
+
+def weight_reset(m):
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+        m.reset_parameters()
