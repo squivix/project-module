@@ -4,6 +4,7 @@ from collections import defaultdict
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.transforms import v2
 from tqdm import tqdm
@@ -122,24 +123,33 @@ def rescale_data_transform(old_min, old_max, new_min, new_max, should_round=Fals
     return v2.Lambda(rescale_lambda)
 
 
+def reduce_dataset(dataset: Dataset, discard_ratio=0.0):
+    if discard_ratio > 0:
+        subset_indices, _, subset_labels, _ = train_test_split(np.arange(len(dataset)),
+                                                               dataset.labels,
+                                                               test_size=discard_ratio,
+                                                               stratify=dataset.labels)
+        subset = Subset(dataset, subset_indices)
+        subset.labels = subset_labels
+    else:
+        subset = dataset
+    return subset
+
+
 def undersample_dataset(dataset: Dataset, target_size: int = None):
-    # Extract labels from the dataset
     labels = dataset.labels
     label_indices = defaultdict(list)
 
-    # Group indices by their labels
+    # Group indices by class
     for idx, label in enumerate(labels):
         label_indices[label].append(idx)
 
-    # Determine the target size for each class
     if target_size is None:
         target_size = min(len(indices) for indices in label_indices.values())
 
     undersampled_indices = []
-
-    # Collect a balanced set of indices for each class
     for indices in label_indices.values():
         undersampled_indices.extend(np.random.choice(indices, target_size, replace=False).tolist())
-
-    # Create a Subset of the original dataset
-    return Subset(dataset, undersampled_indices)
+    subset = Subset(dataset, undersampled_indices)
+    subset.labels = dataset.labels[undersampled_indices]
+    return subset

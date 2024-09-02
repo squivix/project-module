@@ -9,15 +9,18 @@ class VggModel(nn.Module):
     def __init__(self, dropout=0.2, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pretrained_model = torchvision.models.vgg16(weights=VGG16_Weights.DEFAULT)
+        self.pretrained_model.classifier = nn.Identity()
         for param in self.pretrained_model.parameters():
             param.requires_grad = False
 
         self.model = nn.Sequential(
-            nn.Linear(1000, 1000),
+            nn.Linear(2048, 4096),
             nn.ReLU(),
-            nn.Linear(1000, 1000),
+            nn.Dropout(dropout),
+            nn.Linear(4096, 4096),
             nn.ReLU(),
-            nn.Linear(1000, 1),
+            nn.Dropout(dropout),
+            nn.Linear(4096, 1),
         )
 
     def forward(self, x):

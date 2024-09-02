@@ -10,14 +10,17 @@ class InceptionV3Model(nn.Module):
         super().__init__(*args, **kwargs)
         self.pretrained_model = torchvision.models.inception_v3(weights=Inception_V3_Weights.DEFAULT)
         self.pretrained_model.AuxLogits = None
+        self.pretrained_model.fc = nn.Identity()
         for param in self.pretrained_model.parameters():
             param.requires_grad = False
 
         self.model = nn.Sequential(
-            nn.Linear(1000, 4096),
+            nn.Linear(2048, 4096),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(4096, 4096),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(4096, 1),
         )
 

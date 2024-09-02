@@ -5,7 +5,7 @@ from copyreg import pickle
 
 from sklearn.model_selection import train_test_split
 
-from datasets.CSVDataset import CSVDataset
+from datasets.CSVStreamDataset import CSVStreamDataset
 from datasets.LabeledImageDataset import LabeledImageDataset
 
 
@@ -84,11 +84,17 @@ def load_csv_data(csv_file_path, skip_header=True):
 import pickle
 
 
-def generate_balanced_dataset(discard_ratio=0.0, test_ratio=0.3, undersample=False):
-    with open("data/features/InceptionV3_features.pickle", "rb") as temp:
-        cached_samples_labels = pickle.load(temp)
-    samples = cached_samples_labels["samples"]
-    labels = cached_samples_labels["labels"]
+def generate_balanced_dataset(features_file_path, discard_ratio=0.0, test_ratio=0.3, undersample=False):
+    features_cached_file_path = f'{"".join(features_file_path.split(".")[:-1])}.pickle'
+    if os.path.isfile(features_cached_file_path):
+        with open(features_cached_file_path, "rb") as temp:
+            cached_samples_labels = pickle.load(temp)
+        samples = cached_samples_labels["samples"]
+        labels = cached_samples_labels["labels"]
+    else:
+        samples, labels = load_csv_data(features_file_path)
+        with open(features_cached_file_path, "wb") as temp:
+            pickle.dump({"samples": samples, "labels": labels}, temp)
     # Keep, discard split
     if discard_ratio > 0:
         samples, _, labels, _ = train_test_split(samples, labels, test_size=discard_ratio, stratify=labels)
@@ -118,7 +124,6 @@ def generate_balanced_dataset(discard_ratio=0.0, test_ratio=0.3, undersample=Fal
         train_samples = undersampled_train_samples
         train_labels = undersampled_train_labels
 
-    csv_path = "data/features/InceptionV3_features.csv"
-    training_dataset = CSVDataset(csv_path, train_samples, train_labels)
-    validation_dataset = CSVDataset(csv_path, test_samples, test_labels)
+    training_dataset = CSVStreamDataset(features_file_path, train_samples, train_labels)
+    validation_dataset = CSVStreamDataset(features_file_path, test_samples, test_labels)
     return training_dataset, validation_dataset
