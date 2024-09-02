@@ -6,7 +6,7 @@ import time
 import numpy
 import numpy as np
 import torch
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, StratifiedKFold
 from torch.optim import Adam
 from torch.utils.data import SubsetRandomSampler, DataLoader
 from tqdm import tqdm
@@ -71,9 +71,9 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
                      batch_size=32):
     metrics = ["loss", "accuracy", "precision", "recall", "f1", "mcc"]
     test_metrics = {m: [] for m in metrics}
-    kfold = KFold(n_splits=k, shuffle=True)
+    kfold = StratifiedKFold(n_splits=k, shuffle=True)
 
-    for fold, (train_ids, test_ids) in enumerate(kfold.split(dataset)):
+    for fold, (train_ids, test_ids) in enumerate(kfold.split(dataset, dataset.labels)):
         train_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(train_ids))
         test_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(test_ids))
         model.apply(weight_reset)

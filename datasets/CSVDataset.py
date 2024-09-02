@@ -4,9 +4,10 @@ import torch
 
 
 class CSVDataset(Dataset):
-    def __init__(self, file_path, samples, transform=None):
+    def __init__(self, file_path, samples, labels, transform=None):
         self.file_path = file_path
         self.samples = samples
+        self.labels = labels
 
     def __getitem__(self, idx):
         file = open(self.file_path, 'r')

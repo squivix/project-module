@@ -95,10 +95,13 @@ def generate_balanced_dataset(discard_ratio=0.0, test_ratio=0.3, undersample=Fal
 
     # Train, test split
     if test_ratio > 0:
-        train_samples, test_samples, _, _ = train_test_split(samples, labels, test_size=test_ratio, stratify=labels)
+        train_samples, test_samples, train_labels, test_labels = train_test_split(samples, labels, test_size=test_ratio,
+                                                                                  stratify=labels)
     else:
         train_samples = samples
+        train_labels = labels
         test_samples = []
+        test_labels = []
 
     # Undersample training data
     if undersample:
@@ -108,11 +111,14 @@ def generate_balanced_dataset(discard_ratio=0.0, test_ratio=0.3, undersample=Fal
         min_class_size = min(len(samples) for samples in training_samples_by_class.values())
 
         undersampled_train_samples = []
-        for class_samples in training_samples_by_class.values():
+        undersampled_train_labels = []
+        for class_label, class_samples in training_samples_by_class.items():
             undersampled_train_samples.extend(class_samples[:min_class_size])
+            undersampled_train_labels.extend([class_label] * min_class_size)
         train_samples = undersampled_train_samples
+        train_labels = undersampled_train_labels
 
     csv_path = "data/features/InceptionV3_features.csv"
-    training_dataset = CSVDataset(csv_path, train_samples)
-    validation_dataset = CSVDataset(csv_path, test_samples)
+    training_dataset = CSVDataset(csv_path, train_samples, train_labels)
+    validation_dataset = CSVDataset(csv_path, test_samples, test_labels)
     return training_dataset, validation_dataset
