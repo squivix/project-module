@@ -8,11 +8,11 @@ import numpy as np
 import torch
 from sklearn.model_selection import KFold, StratifiedKFold
 from torch.optim import Adam
-from torch.utils.data import SubsetRandomSampler, DataLoader
+from torch.utils.data import SubsetRandomSampler, DataLoader, Subset
 from tqdm import tqdm
 
 from models.mlp import MLPModel, weight_reset
-from utils import calc_binary_classification_metrics
+from utils import calc_binary_classification_metrics, undersample_dataset
 
 
 def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32,
@@ -44,7 +44,8 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
     i = 0
     for hidden_layers, neurons, dropout, threshold in itertools.product(hidden_layer_combs, neuron_combs, dropout_combs,
                                                                         threshold_combs):
-        model_builder = MLPModel(in_features=2048, hidden_layers=hidden_layers, neurons_per_layer=neurons,dropout=dropout, threshold=threshold)
+        model_builder = MLPModel(in_features=2048, hidden_layers=hidden_layers, neurons_per_layer=neurons,
+                                 dropout=dropout, threshold=threshold)
         for learning_rate, weight_decay in itertools.product(learning_rate_combs, weight_decay_combs):
             param_key = f"(hidden_layers={hidden_layers}, neurons={neurons}, dropout={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay})"
             print(param_key)
@@ -74,8 +75,11 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
     kfold = StratifiedKFold(n_splits=k, shuffle=True)
 
     for fold, (train_ids, test_ids) in enumerate(kfold.split(dataset, dataset.labels)):
-        train_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(train_ids))
-        test_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(test_ids))
+        train_dataset = Subset(dataset, train_ids)
+        train_dataset.labels = np.array(dataset.labels)[train_ids]
+        train_loader = DataLoader(undersample_dataset(train_dataset), batch_size=batch_size, shuffle=True)
+        test_loader = DataLoader(Subset(dataset, test_ids), batch_size=batch_size, shuffle=True)
+
         model.apply(weight_reset)
         model = model.to(device)
         optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)

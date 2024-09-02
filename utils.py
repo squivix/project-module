@@ -1,9 +1,10 @@
 import math
+from collections import defaultdict
 
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.transforms import v2
 from tqdm import tqdm
 
@@ -100,7 +101,6 @@ def calc_binary_classification_metrics(true_labels, predicted_labels):
     fp = torch.sum((predicted_labels == 1) & (true_labels == 0)).item()
     fn = torch.sum((predicted_labels == 0) & (true_labels == 1)).item()
 
-
     accuracy = divide(tp + tn, (tp + tn + fp + fn))
     precision = divide(tp, (tp + fp))
     recall = divide(tp, (tp + fn))
@@ -120,3 +120,26 @@ def rescale_data_transform(old_min, old_max, new_min, new_max, should_round=Fals
         return new_val
 
     return v2.Lambda(rescale_lambda)
+
+
+def undersample_dataset(dataset: Dataset, target_size: int = None):
+    # Extract labels from the dataset
+    labels = dataset.labels
+    label_indices = defaultdict(list)
+
+    # Group indices by their labels
+    for idx, label in enumerate(labels):
+        label_indices[label].append(idx)
+
+    # Determine the target size for each class
+    if target_size is None:
+        target_size = min(len(indices) for indices in label_indices.values())
+
+    undersampled_indices = []
+
+    # Collect a balanced set of indices for each class
+    for indices in label_indices.values():
+        undersampled_indices.extend(np.random.choice(indices, target_size, replace=False).tolist())
+
+    # Create a Subset of the original dataset
+    return Subset(dataset, undersampled_indices)
