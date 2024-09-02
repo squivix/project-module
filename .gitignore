@@ -7,3 +7,4 @@ data
 libs
 .directory
 checkpoints
+.ipynb_checkpoints

@@ -31,7 +31,7 @@ class MLPModel(nn.Module):
 
     def predict(self, prob):
         with torch.no_grad():
-            return (prob >= self.threshold).float()
+            return (prob >= self.threshold).T.float()
 
 
 def weight_reset(m):

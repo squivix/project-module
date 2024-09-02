@@ -1,7 +1,9 @@
 import itertools
 import json
+import math
 import os
 import time
+from itertools import product
 
 import numpy
 import numpy as np
@@ -41,6 +43,7 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
     if checkpoint_file_path is not None:
         with open(checkpoint_file_path, 'rb') as checkpoint_file:
             param_to_metrics = json.load(checkpoint_file)
+    max_iters=math.prod([len(c) for c in [hidden_layer_combs, neuron_combs, dropout_combs,threshold_combs, learning_rate_combs, weight_decay_combs]])
     i = 0
     for hidden_layers, neurons, dropout, threshold in itertools.product(hidden_layer_combs, neuron_combs, dropout_combs,
                                                                         threshold_combs):
@@ -48,7 +51,7 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
                                  dropout=dropout, threshold=threshold)
         for learning_rate, weight_decay in itertools.product(learning_rate_combs, weight_decay_combs):
             param_key = f"(hidden_layers={hidden_layers}, neurons={neurons}, dropout={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay})"
-            print(param_key)
+            print(f"({i}/{max_iters}) {param_key}")
             if not param_key in param_to_metrics:
                 eval_metrics = kfold_train_eval(model_builder, dataset,
                                                 batch_size=batch_size, device=device, k=k, max_epochs=max_epochs,
@@ -113,7 +116,7 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
                 batch_test_metrics["loss"][i] = test_loss
                 batch_test_metrics["accuracy"][i] = accuracy
                 batch_test_metrics["precision"][i] = precision
-                batch_test_metrics["recall"][i] = accuracy
+                batch_test_metrics["recall"][i] = recall
                 batch_test_metrics["f1"][i] = f1
                 batch_test_metrics["mcc"][i] = mcc
             for m in metrics:
@@ -157,7 +160,7 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
             batch_train_metrics["loss"][i] = loss
             batch_train_metrics["accuracy"][i] = accuracy
             batch_train_metrics["precision"][i] = precision
-            batch_train_metrics["recall"][i] = accuracy
+            batch_train_metrics["recall"][i] = recall
             batch_train_metrics["f1"][i] = f1
             batch_train_metrics["mcc"][i] = mcc
             loss.backward()
@@ -188,7 +191,7 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
                     batch_test_metrics["loss"][i] = test_loss
                     batch_test_metrics["accuracy"][i] = test_accuracy
                     batch_test_metrics["precision"][i] = test_precision
-                    batch_test_metrics["recall"][i] = test_accuracy
+                    batch_test_metrics["recall"][i] = test_recall
                     batch_test_metrics["f1"][i] = test_f1
                     batch_test_metrics["mcc"][i] = test_mcc
                 for m in metrics:
