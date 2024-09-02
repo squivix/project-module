@@ -16,7 +16,7 @@ from models.mlp import MLPModel, weight_reset
 from utils import calc_binary_classification_metrics
 
 
-def kfold_grid_search(dataset, device, k=5, max_epochs=20, batch_size=32,
+def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32,
                       hidden_layer_combs=None,
                       neuron_combs=None,
                       learning_rate_combs=None,
@@ -34,22 +34,28 @@ def kfold_grid_search(dataset, device, k=5, max_epochs=20, batch_size=32,
     checkpoint_dir = f"checkpoints/grid-search/{grid_search_start_time}"
     os.makedirs(checkpoint_dir, exist_ok=True)
     param_to_metrics = {}
+    if checkpoint_file_path is not None:
+        with open(checkpoint_file_path, 'rb') as checkpoint_file:
+            param_to_metrics = json.load(checkpoint_file)
     i = 0
     for hidden_layers, neurons in itertools.product(hidden_layer_combs, neuron_combs):
         model_builder = MLPModel(in_features=2048, hidden_layers=hidden_layers, neurons_per_layer=neurons)
         for learning_rate, weight_decay in itertools.product(learning_rate_combs, weight_decay_combs):
             param_key = f"(hidden_layers={hidden_layers}, neurons={neurons}, learning_rate={learning_rate}, weight_decay={weight_decay})"
             print(param_key)
-            eval_metrics = kfold_train_eval(model_builder, dataset,
-                                            batch_size=batch_size, device=device, k=k, max_epochs=max_epochs,
-                                            learning_rate=learning_rate, weight_decay=weight_decay, )
-            param_to_metrics[param_key] = eval_metrics
-            print(param_key, eval_metrics)
+            if not param_key in param_to_metrics:
+                eval_metrics = kfold_train_eval(model_builder, dataset,
+                                                batch_size=batch_size, device=device, k=k, max_epochs=max_epochs,
+                                                learning_rate=learning_rate, weight_decay=weight_decay, )
+                param_to_metrics[param_key] = eval_metrics
+            else:
+                eval_metrics = param_to_metrics[param_key]
+            print(eval_metrics)
 
             with open(f"{checkpoint_dir}/{i}.json", "w") as f:
                 json.dump(param_to_metrics, f)
 
-            if eval_metrics["f1"] >= 0.5:
+            if eval_metrics["test_f1"] >= 0.5:
                 print(f"Over 0.5 f1 found with {param_key}")
                 with open(f"{checkpoint_dir}/good_f1_{i}.json", "w") as f:
                     json.dump(param_to_metrics, f)
