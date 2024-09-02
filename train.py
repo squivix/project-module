@@ -2,7 +2,6 @@ import itertools
 import json
 import os
 import time
-import pickle
 
 import numpy
 import numpy as np
@@ -19,17 +18,22 @@ from utils import calc_binary_classification_metrics
 def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32,
                       hidden_layer_combs=None,
                       neuron_combs=None,
+                      dropout_combs=None,
+                      threshold_combs=None,
                       learning_rate_combs=None,
                       weight_decay_combs=None, ):
     if hidden_layer_combs is None:
         hidden_layer_combs = [1]
     if neuron_combs is None:
         neuron_combs = [2048]
+    if dropout_combs is None:
+        dropout_combs = [0.2]
+    if threshold_combs is None:
+        threshold_combs = [0.5]
     if learning_rate_combs is None:
         learning_rate_combs = [0.001]
     if weight_decay_combs is None:
         weight_decay_combs = [0.0]
-
     grid_search_start_time = int(time.time() * 1000)
     checkpoint_dir = f"checkpoints/grid-search/{grid_search_start_time}"
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -38,10 +42,11 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
         with open(checkpoint_file_path, 'rb') as checkpoint_file:
             param_to_metrics = json.load(checkpoint_file)
     i = 0
-    for hidden_layers, neurons in itertools.product(hidden_layer_combs, neuron_combs):
-        model_builder = MLPModel(in_features=2048, hidden_layers=hidden_layers, neurons_per_layer=neurons)
+    for hidden_layers, neurons, dropout, threshold in itertools.product(hidden_layer_combs, neuron_combs, dropout_combs,
+                                                                        threshold_combs):
+        model_builder = MLPModel(in_features=2048, hidden_layers=hidden_layers, neurons_per_layer=neurons,dropout=dropout, threshold=threshold)
         for learning_rate, weight_decay in itertools.product(learning_rate_combs, weight_decay_combs):
-            param_key = f"(hidden_layers={hidden_layers}, neurons={neurons}, learning_rate={learning_rate}, weight_decay={weight_decay})"
+            param_key = f"(hidden_layers={hidden_layers}, neurons={neurons}, dropout_prob={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay})"
             print(param_key)
             if not param_key in param_to_metrics:
                 eval_metrics = kfold_train_eval(model_builder, dataset,

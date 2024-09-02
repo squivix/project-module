@@ -6,7 +6,7 @@ from torch import nn
 
 
 class MLPModel(nn.Module):
-    def __init__(self, in_features, hidden_layers, neurons_per_layer, dropout=0.2, *args, **kwargs):
+    def __init__(self, in_features, hidden_layers, neurons_per_layer, dropout=0.2, threshold=0.5, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = nn.Sequential(
             *[nn.Linear(2048, neurons_per_layer),
@@ -21,6 +21,7 @@ class MLPModel(nn.Module):
             nn.Linear(neurons_per_layer, 1),
             nn.Sigmoid()
         )
+        self.threshold = threshold
 
     def forward(self, x):
         return self.model(x)
@@ -30,7 +31,7 @@ class MLPModel(nn.Module):
 
     def predict(self, prob):
         with torch.no_grad():
-            return (prob > 0.5).float()
+            return (prob >= self.threshold).float()
 
 
 def weight_reset(m):
