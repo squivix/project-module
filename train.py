@@ -46,7 +46,7 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
                                                                         threshold_combs):
         model_builder = MLPModel(in_features=2048, hidden_layers=hidden_layers, neurons_per_layer=neurons,dropout=dropout, threshold=threshold)
         for learning_rate, weight_decay in itertools.product(learning_rate_combs, weight_decay_combs):
-            param_key = f"(hidden_layers={hidden_layers}, neurons={neurons}, dropout_prob={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay})"
+            param_key = f"(hidden_layers={hidden_layers}, neurons={neurons}, dropout={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay})"
             print(param_key)
             if not param_key in param_to_metrics:
                 eval_metrics = kfold_train_eval(model_builder, dataset,
