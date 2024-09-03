@@ -136,6 +136,21 @@ def reduce_dataset(dataset: Dataset, discard_ratio=0.0):
     return subset
 
 
+def split_dataset(dataset: Dataset, train_ratio=0.7):
+    if train_ratio < 1.0:
+        train_indices, test_indices, train_labels, test_labels = train_test_split(np.arange(len(dataset)),
+                                                                                  dataset.labels,
+                                                                                  train_size=train_ratio,
+                                                                                  stratify=dataset.labels)
+        train_subset = Subset(dataset, train_indices)
+        train_subset.labels = train_labels
+        test_subset = Subset(dataset, test_indices)
+        test_subset.labels = test_labels
+        return train_subset, test_subset
+    else:
+        return dataset, Subset(dataset, [])
+
+
 def undersample_dataset(dataset: Dataset, target_size: int = None):
     labels = dataset.labels
     label_indices = defaultdict(list)
