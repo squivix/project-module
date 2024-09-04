@@ -19,15 +19,15 @@ from utils import calc_binary_classification_metrics, undersample_dataset
 
 def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32,
                       hidden_layer_combs=None,
-                      neuron_combs=None,
+                      unit_combs=None,
                       dropout_combs=None,
                       threshold_combs=None,
                       learning_rate_combs=None,
                       weight_decay_combs=None, ):
     if hidden_layer_combs is None:
         hidden_layer_combs = [1]
-    if neuron_combs is None:
-        neuron_combs = [2048]
+    if unit_combs is None:
+        unit_combs = [2048]
     if dropout_combs is None:
         dropout_combs = [0.2]
     if threshold_combs is None:
@@ -43,14 +43,14 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
     if checkpoint_file_path is not None:
         with open(checkpoint_file_path, 'rb') as checkpoint_file:
             param_to_metrics = json.load(checkpoint_file)
-    max_iters=math.prod([len(c) for c in [hidden_layer_combs, neuron_combs, dropout_combs,threshold_combs, learning_rate_combs, weight_decay_combs]])
+    max_iters=math.prod([len(c) for c in [hidden_layer_combs, unit_combs, dropout_combs, threshold_combs, learning_rate_combs, weight_decay_combs]])
     i = 0
-    for hidden_layers, neurons, dropout, threshold in itertools.product(hidden_layer_combs, neuron_combs, dropout_combs,
+    for hidden_layers, units, dropout, threshold in itertools.product(hidden_layer_combs, unit_combs, dropout_combs,
                                                                         threshold_combs):
-        model_builder = MLPModel(in_features=2048, hidden_layers=hidden_layers, neurons_per_layer=neurons,
+        model_builder = MLPModel(in_features=2048, hidden_layers=hidden_layers, units_per_layer=units,
                                  dropout=dropout, threshold=threshold)
         for learning_rate, weight_decay in itertools.product(learning_rate_combs, weight_decay_combs):
-            param_key = f"(hidden_layers={hidden_layers}, neurons={neurons}, dropout={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay})"
+            param_key = f"(hidden_layers={hidden_layers}, units={units}, dropout={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay})"
             print(f"({i}/{max_iters}) {param_key}")
             if not param_key in param_to_metrics:
                 eval_metrics = kfold_train_eval(model_builder, dataset,
@@ -138,10 +138,10 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
     if checkpoint_every is not None:
         os.makedirs(checkpoint_dir, exist_ok=True)
 
-        with  open(f"{checkpoint_dir}/train_dataset.json", 'w') as temp_file:
-            json.dump(train_loader.dataset.to_dict(), temp_file)
-        with  open(f"{checkpoint_dir}/test_dataset.json", 'w') as temp_file:
-            json.dump(test_loader.dataset.to_dict(), temp_file)
+        # with  open(f"{checkpoint_dir}/train_dataset.json", 'w') as temp_file:
+        #     json.dump(train_loader.dataset.to_dict(), temp_file)
+        # with  open(f"{checkpoint_dir}/test_dataset.json", 'w') as temp_file:
+        #     json.dump(test_loader.dataset.to_dict(), temp_file)
 
     for epoch in range(max_epochs):
         if checkpoint_every is not None and epoch % checkpoint_every == 0:

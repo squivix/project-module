@@ -1,12 +1,12 @@
-import torch
-import torch.nn.functional as F
 import torchvision
 from torch import nn
 from torchvision.models import Inception_V3_Weights, InceptionOutputs
 
+from models.mlp import MLPModel
+
 
 class InceptionV3Model(nn.Module):
-    def __init__(self, dropout=0.2, *args, **kwargs):
+    def __init__(self, hidden_layers, units_per_layer, dropout=0.2, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.pretrained_model = torchvision.models.inception_v3(weights=Inception_V3_Weights.DEFAULT)
         self.pretrained_model.AuxLogits = None
@@ -14,15 +14,10 @@ class InceptionV3Model(nn.Module):
         for param in self.pretrained_model.parameters():
             param.requires_grad = False
 
-        self.model = nn.Sequential(
-            nn.Linear(2048, 4096),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(4096, 4096),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(4096, 1),
-        )
+        self.model = MLPModel(in_features=2048,
+                              hidden_layers=hidden_layers,
+                              units_per_layer=units_per_layer,
+                              dropout=dropout)
 
     def forward(self, x):
         output = self.pretrained_model.forward(x)
@@ -33,8 +28,7 @@ class InceptionV3Model(nn.Module):
         return self.model.forward(pre_logits)
 
     def loss_function(self, logits, target):
-        return F.binary_cross_entropy_with_logits(logits.squeeze(1), target.float())
+        return self.model.loss_function(logits, target)
 
-    def predict(self, logits):
-        with torch.no_grad():
-            return (torch.sigmoid(logits) > 0.5).float()
+    def predict(self, probs):
+        self.model.predict(probs)

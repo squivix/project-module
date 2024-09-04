@@ -6,19 +6,19 @@ from torch import nn
 
 
 class MLPModel(nn.Module):
-    def __init__(self, in_features, hidden_layers, neurons_per_layer, dropout=0.2, threshold=0.5, *args, **kwargs):
+    def __init__(self, in_features, hidden_layers, units_per_layer, dropout=0.2, threshold=0.5, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.model = nn.Sequential(
-            *[nn.Linear(2048, neurons_per_layer),
+            *[nn.Linear(in_features, units_per_layer),
               nn.ReLU(),
               nn.Dropout(dropout), ],
             *chain(*repeat(
                 [
-                    nn.Linear(neurons_per_layer, neurons_per_layer),
+                    nn.Linear(units_per_layer, units_per_layer),
                     nn.ReLU(),
                     nn.Dropout(dropout)
                 ], hidden_layers)),
-            nn.Linear(neurons_per_layer, 1),
+            nn.Linear(units_per_layer, 1),
             nn.Sigmoid()
         )
         self.threshold = threshold
