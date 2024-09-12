@@ -168,3 +168,4 @@ def undersample_dataset(dataset: Dataset, target_size: int = None):
     subset = Subset(dataset, undersampled_indices)
     subset.labels = dataset.labels[undersampled_indices]
     return subset
+
