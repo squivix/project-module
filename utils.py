@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.transforms import v2
 from tqdm import tqdm
 
+from datasets.OversampledDataset import OversampledDataset
+
 
 def plot_model_metrics(model_metrics):
     fig, ax = plt.subplots(nrows=2, figsize=(10, 10))
@@ -29,33 +31,36 @@ def plot_model_metrics(model_metrics):
     plt.show()
 
 
-def mlp_apply(model, test_indexes, test_dataset):
-    examples = test_dataset.data[test_indexes]
-    true_labels = test_dataset.targets[test_indexes]
+def apply_model(model, test_dataset, test_indexes, device):
+    # examples = test_dataset[test_indexes]
+    # true_labels = test_dataset[test_indexes]
+    examples, true_labels = next(iter(DataLoader(Subset(test_dataset, test_indexes), batch_size=len(test_indexes))))
+    examples = examples.to(device)
+    true_labels = true_labels.to(device)
     with torch.no_grad():
         test_logits = model.forward(examples)
         predicted_labels = torch.max(torch.softmax(test_logits, 1), dim=1)[1]
         correct_count = torch.sum((predicted_labels == true_labels).long())
         print(f"Accuracy on the {len(examples)} examples: {correct_count}/{len(examples)}")
 
-    plot_grid_size = int(math.ceil(math.sqrt(len(examples))))
-    fig, axes = plt.subplots(plot_grid_size, plot_grid_size, figsize=(10, 10))
-    axes = axes.flatten()
-    for i, image in enumerate(examples):
-        axes[i].imshow(image.numpy(force=True), cmap='gray')
-        axes[i].axis('off')  # Hide axes
-        axes[i].annotate(test_dataset.classes[true_labels[i].item()], (0.5, -0.1), xycoords='axes fraction',
-                         ha='center', va='top', fontsize=10,
-                         color='green')
-        axes[i].annotate(test_dataset.classes[predicted_labels[i].item()], (0.5, -0.2), xycoords='axes fraction',
-                         ha='center', va='top', fontsize=10,
-                         color='red')
+        plot_grid_size = int(math.ceil(math.sqrt(len(examples))))
+        fig, axes = plt.subplots(plot_grid_size, plot_grid_size, figsize=(10, 10))
+        axes = axes.flatten()
+        for i, image in enumerate(examples):
+            axes[i].imshow(image.permute(1, 2, 0).numpy(force=True), cmap='gray')
+            axes[i].axis('off')  # Hide axes
+            axes[i].annotate(test_dataset.classes[true_labels[i].item()], (0.5, -0.1), xycoords='axes fraction',
+                             ha='center', va='top', fontsize=10,
+                             color='green')
+            axes[i].annotate(test_dataset.classes[predicted_labels[i].item()], (0.5, -0.2), xycoords='axes fraction',
+                             ha='center', va='top', fontsize=10,
+                             color='red')
 
-    for i in range(len(examples), plot_grid_size ** 2):
-        axes[i].axis('off')
+        for i in range(len(examples), plot_grid_size ** 2):
+            axes[i].axis('off')
 
-    plt.tight_layout()
-    plt.show()
+        plt.tight_layout()
+        plt.show()
 
     return
 
@@ -131,6 +136,7 @@ def reduce_dataset(dataset: Dataset, discard_ratio=0.0):
                                                                stratify=dataset.labels)
         subset = Subset(dataset, subset_indices)
         subset.labels = subset_labels
+        subset.get_item_untransformed = dataset.get_item_untransformed
     else:
         subset = dataset
     return subset
@@ -144,7 +150,9 @@ def split_dataset(dataset: Dataset, train_ratio=0.7):
                                                                                   stratify=dataset.labels)
         train_subset = Subset(dataset, train_indices)
         train_subset.labels = train_labels
+        train_subset.get_item_untransformed = dataset.get_item_untransformed
         test_subset = Subset(dataset, test_indices)
+        test_subset.get_item_untransformed = dataset.get_item_untransformed
         test_subset.labels = test_labels
         return train_subset, test_subset
     else:
@@ -157,6 +165,8 @@ def undersample_dataset(dataset: Dataset, target_size: int = None):
 
     # Group indices by class
     for idx, label in enumerate(labels):
+        if isinstance(label, torch.Tensor):
+            label = label.item()
         label_indices[label].append(idx)
 
     if target_size is None:
@@ -169,3 +179,21 @@ def undersample_dataset(dataset: Dataset, target_size: int = None):
     subset.labels = dataset.labels[undersampled_indices]
     return subset
 
+
+def oversample_dataset(dataset: Dataset, transforms, target_size: int = None):
+    labels = dataset.labels
+    label_indices = defaultdict(list)
+
+    # Group indices by class
+    for idx, label in enumerate(labels):
+        if isinstance(label, torch.Tensor):
+            label = label.item()
+        label_indices[label].append(idx)
+
+    if target_size is None:
+        target_size = max(len(indices) for indices in label_indices.values())
+
+    minority_label = min(label_indices, key=lambda k: len(label_indices[k]))
+
+    oversampled_indices = np.random.choice(label_indices[minority_label], target_size, replace=True).tolist()
+    return OversampledDataset(dataset, oversampled_indices, transforms)
