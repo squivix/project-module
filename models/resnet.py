@@ -26,7 +26,7 @@ class Resnet50Model(nn.Module):
         return self.model.loss_function(logits, target)
 
     def predict(self, probs):
-        self.model.predict(probs)
+        return self.model.predict(probs)
 
 
 class Resnet18Model(nn.Module):
@@ -50,4 +50,4 @@ class Resnet18Model(nn.Module):
         return self.model.loss_function(logits, target)
 
     def predict(self, probs):
-        self.model.predict(probs)
+        return self.model.predict(probs)
