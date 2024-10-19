@@ -1,5 +1,8 @@
 import math
+import os
+import shutil
 from collections import defaultdict
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -197,3 +200,10 @@ def oversample_dataset(dataset: Dataset, transforms, target_size: int = None):
 
     oversampled_indices = np.random.choice(label_indices[minority_label], target_size, replace=True).tolist()
     return OversampledDataset(dataset, oversampled_indices, transforms)
+
+
+def clear_dir(dir_path_string):
+    dir_path = Path(dir_path_string)
+    if dir_path.exists() and dir_path.is_dir():
+        shutil.rmtree(dir_path)
+    os.makedirs(dir_path_string, exist_ok=True)
