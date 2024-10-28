@@ -4,28 +4,59 @@ import numpy as np
 cv2.namedWindow("image", cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
 
-raw_image = cv2.imread('data/segments/big02.jpg')
-image = cv2.GaussianBlur(raw_image, (15, 15), 0)
-hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-_, otsu_mask = cv2.threshold(hsv_image[:, :, 1], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-otsu_mask = cv2.morphologyEx(otsu_mask, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))
+raw_image = cv2.imread('data/segments/big01.jpg')
 
-dilated = cv2.dilate(otsu_mask, np.ones((7, 7), np.uint8) , iterations=1)
-contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+image = cv2.resize(raw_image, (raw_image.shape[0] // 2, raw_image.shape[1] // 2), interpolation=cv2.INTER_AREA)
+image = cv2.medianBlur(image, 7, 0)
+gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+_, binary_mask = cv2.threshold(gray_image, 127, 255, cv2.THRESH_BINARY_INV)
+binary_mask = cv2.dilate(binary_mask, np.ones((7, 7)), iterations=5)
 
-cv2.drawContours(image, contours, -1, (0, 255, 0), 3)
-cv2.imshow('image', image)
+gray = cv2.cvtColor(raw_image, cv2.COLOR_BGR2GRAY)
+blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+# Apply binary thresholding
+_, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+# Find contours
+contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+# Create a mask to draw the main contour
+mask = np.zeros_like(gray)
+
+# Draw the largest contour on the mask (assuming it's the tissue)
+cv2.drawContours(mask, contours, -1, (255), thickness=cv2.FILLED)
+
+# Distance transform to get the distance of every pixel to the nearest background pixel
+dist_transform = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
+
+# Normalize for easier visualization and manipulation
+cv2.normalize(dist_transform, dist_transform, 0, 1.0, cv2.NORM_MINMAX)
+
+# Define how thick the sliver should be (in pixels)
+sliver_thickness = 100  # Adjust this for desired depth
+
+# Create a binary mask where the distance is within the sliver thickness
+_, sliver_mask = cv2.threshold(dist_transform, 0.1, 1.0, cv2.THRESH_BINARY)
+_, sliver_mask = cv2.threshold(sliver_mask, 1 - (sliver_thickness / 100), 1.0, cv2.THRESH_BINARY)
+
+# Convert sliver mask to 8-bit for visualization
+sliver_mask = (sliver_mask * 255).astype(np.uint8)
+
+# Combine the sliver with the original image for visualization
+result = cv2.bitwise_and(raw_image,raw_image, mask=sliver_mask)
+cv2.imshow('image', cv2.hconcat([mask, sliver_mask]))
 cv2.waitKey()
-# image = cv2.GaussianBlur(raw_image, (7, 7), 0)
-# # cv2.imshow("image", image)
+
+# hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+# _, otsu_mask = cv2.threshold(hsv_image[:, :, 1], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+# # otsu_mask = cv2.morphologyEx(otsu_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+# # otsu_mask = cv2.dilate(otsu_mask, np.ones((3,3)), iterations=1)
+# contours, _ = cv2.findContours(otsu_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+# filtered_mask = np.zeros_like(otsu_mask)
+
+# for contour in contours:
+#     if cv2.contourArea(contour) > 2000:
+#         cv2.drawContours(filtered_mask, [contour], -1, 255, thickness=cv2.FILLED)
 #
-# lower = np.array([127, 36, 0])
-# upper = np.array([175, 255, 140])
-# mask = cv2.inRange(cv2.cvtColor(image, cv2.COLOR_BGR2HSV), lower, upper)
-# mask1 = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5,5),np.uint8))
-# mask2 = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((7,7),np.uint8))
-# result = cv2.bitwise_and(image, image, mask=mask)
-#
-# cv2.imshow('image', cv2.hconcat([cv2.bitwise_and(image, image, mask=mask1),
-#                                  cv2.bitwise_and(image, image, mask=mask2)]))
+# cv2.imshow('image', cv2.hconcat([raw_image,image,]))
 # cv2.waitKey()

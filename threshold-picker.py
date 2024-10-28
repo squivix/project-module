@@ -6,8 +6,10 @@ import numpy as np
 cv2.namedWindow("image", cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
 
+
 def nothing(x):
     pass
+
 
 # Load image
 image = cv2.imread('data/segments/big02.jpg')
@@ -25,8 +27,14 @@ cv2.createTrackbar('SMax', 'image', 0, 255, nothing)
 cv2.createTrackbar('VMax', 'image', 0, 255, nothing)
 
 # Set default value for Max HSV trackbars
-lower = np.array([127, 36, 0])
-upper = np.array([175, 255, 140])
+
+lower_inner = np.array([0, 0, 225])
+upper_inner = np.array([180, 20, 255])
+lower_outer = np.array([146, 75, 0])
+upper_outer = np.array([170, 255, 120])
+lower = lower_outer  # np.array([127, 36, 0])
+upper = upper_outer  # np.array([175, 255, 140])
+
 cv2.setTrackbarPos('HMin', 'image', lower[0])
 cv2.setTrackbarPos('SMin', 'image', lower[1])
 cv2.setTrackbarPos('VMin', 'image', lower[2])
@@ -38,7 +46,7 @@ cv2.setTrackbarPos('VMax', 'image', upper[2])
 hMin = sMin = vMin = hMax = sMax = vMax = 0
 phMin = psMin = pvMin = phMax = psMax = pvMax = 0
 
-while(1):
+while (1):
     # Get current positions of all trackbars
     hMin = cv2.getTrackbarPos('HMin', 'image')
     sMin = cv2.getTrackbarPos('SMin', 'image')
@@ -57,8 +65,8 @@ while(1):
     result = cv2.bitwise_and(image, image, mask=mask)
 
     # Print if there is a change in HSV value
-    if((phMin != hMin) | (psMin != sMin) | (pvMin != vMin) | (phMax != hMax) | (psMax != sMax) | (pvMax != vMax) ):
-        print("(hMin = %d , sMin = %d, vMin = %d), (hMax = %d , sMax = %d, vMax = %d)" % (hMin , sMin , vMin, hMax, sMax , vMax))
+    if ((phMin != hMin) | (psMin != sMin) | (pvMin != vMin) | (phMax != hMax) | (psMax != sMax) | (pvMax != vMax)):
+        print("(hMin = %d , sMin = %d, vMin = %d), (hMax = %d , sMax = %d, vMax = %d)" % (hMin, sMin, vMin, hMax, sMax, vMax))
         phMin = hMin
         psMin = sMin
         pvMin = vMin
