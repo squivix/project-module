@@ -1,10 +1,10 @@
 import os
+from pathlib import Path
 
 import cv2
 import numpy as np
+from numpy.core.defchararray import lower
 
-cv2.namedWindow("image", cv2.WINDOW_GUI_NORMAL)
-cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
 
 
 def preprocess(image):
@@ -26,6 +26,8 @@ def main():  # Define parameters
     main_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     for template_name in os.listdir(template_dir):
+        if lower(Path(template_name).suffix) not in [".png", ".jpg", ".jpeg"]:
+            continue
         template_path = os.path.join(template_dir, template_name)
         print(template_path)
 
@@ -50,6 +52,10 @@ def main():  # Define parameters
             top_left = point
             bottom_right = (top_left[0] + template_w, top_left[1] + template_h)
             cv2.rectangle(image, top_left, bottom_right, (0, 255, 0), 2)
+
+    cv2.namedWindow("image", cv2.WINDOW_GUI_NORMAL)
+    cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+
 
     cv2.imshow('image', image)
     cv2.waitKey(0)
