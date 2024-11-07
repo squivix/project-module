@@ -4,6 +4,7 @@ import shutil
 from collections import defaultdict
 from pathlib import Path
 
+import cv2
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
@@ -207,3 +208,91 @@ def clear_dir(dir_path_string):
     if dir_path.exists() and dir_path.is_dir():
         shutil.rmtree(dir_path)
     os.makedirs(dir_path_string, exist_ok=True)
+
+
+def downscale_bbox(bbox, downscale_factor):
+    xmin, ymin, width, height = bbox
+    downscale_factor = int(downscale_factor)
+    # Downscale each value
+    new_xmin = xmin // downscale_factor
+    new_ymin = ymin // downscale_factor
+    new_width = width // downscale_factor
+    new_height = height // downscale_factor
+
+    # Return the new bounding box as a tuple
+    return (new_xmin, new_ymin, new_width, new_height)
+
+
+def is_bbox2_within_bbox1(bbox1, bbox2):
+    # Unpacking bbox1 and bbox2
+    xmin1, ymin1, width1, height1 = bbox1
+    xmin2, ymin2, width2, height2 = bbox2
+
+    # Calculate the bottom-right corners of bbox1 and bbox2
+    xmax1, ymax1 = xmin1 + width1, ymin1 + height1
+    xmax2, ymax2 = xmin2 + width2, ymin2 + height2
+
+    # Check if bbox2 is inside bbox1
+    return (xmin1 <= xmin2 <= xmax1 and
+            ymin1 <= ymin2 <= ymax1
+            # and
+            # xmax1 >= xmax2 and
+            # ymax1 >= ymax2
+            )
+
+
+def get_relative_bbox2_within_bbox1(bbox1, bbox2):
+    # Unpacking bbox1 and bbox2
+    xmin1, ymin1, width1, height1 = bbox1
+    xmin2, ymin2, width2, height2 = bbox2
+
+    # Calculate the bottom-right corners of bbox1 and bbox2
+    xmax1, ymax1 = xmin1 + width1, ymin1 + height1
+    xmax2, ymax2 = xmin2 + width2, ymin2 + height2
+
+    # Check if bbox2 is inside bbox1
+    if (xmin1 <= xmin2 <= xmax1 and
+            ymin1 <= ymin2 <= ymax1 and
+            xmax1 >= xmax2 and
+            ymax1 >= ymax2):
+        # Calculate relative bbox2 coordinates with respect to bbox1
+        x_relative = xmin2 - xmin1
+        y_relative = ymin2 - ymin1
+        relative_bbox = (x_relative, y_relative, width2, height2)
+        return relative_bbox
+    return None
+
+
+def draw_bbox(image, bbox, color=(0, 255, 0), thickness=2):
+    x, y, width, height = bbox
+    top_left = (x, y)
+    bottom_right = (x + width, y + height)
+    cv2.rectangle(image, top_left, bottom_right, color, thickness)
+    return image
+
+
+def draw_sign(image, is_positive, line_length=100, line_thickness=5):
+    # Get the dimensions of the image
+    height, width = image.shape[:2]
+    if is_positive:
+        line_color = (0, 0, 255, 255)
+    else:
+        line_color = (0, 0, 0, 255)
+    # Define the center of the image
+    center_x, center_y = width // 2, height // 2
+
+    # Draw horizontal line of the "+" sign
+    cv2.line(image,
+             (center_x - line_length // 2, center_y),
+             (center_x + line_length // 2, center_y),
+             line_color,
+             line_thickness)
+    if is_positive:
+        # Draw vertical line of the "+" sign
+        cv2.line(image,
+                 (center_x, center_y - line_length // 2),
+                 (center_x, center_y + line_length // 2),
+                 line_color,
+                 line_thickness)
+
+    return image

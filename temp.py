@@ -4,7 +4,7 @@ import numpy as np
 cv2.namedWindow("image", cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
 
-raw_image = cv2.imread('data/segments/big01.jpg')
+raw_image = cv2.imread('data/tiles/big01.jpg')
 
 image = cv2.resize(raw_image, (raw_image.shape[0] // 2, raw_image.shape[1] // 2), interpolation=cv2.INTER_AREA)
 image = cv2.medianBlur(image, 7, 0)
@@ -46,17 +46,3 @@ sliver_mask = (sliver_mask * 255).astype(np.uint8)
 result = cv2.bitwise_and(raw_image,raw_image, mask=sliver_mask)
 cv2.imshow('image', cv2.hconcat([mask, sliver_mask]))
 cv2.waitKey()
-
-# hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-# _, otsu_mask = cv2.threshold(hsv_image[:, :, 1], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-# # otsu_mask = cv2.morphologyEx(otsu_mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-# # otsu_mask = cv2.dilate(otsu_mask, np.ones((3,3)), iterations=1)
-# contours, _ = cv2.findContours(otsu_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-# filtered_mask = np.zeros_like(otsu_mask)
-
-# for contour in contours:
-#     if cv2.contourArea(contour) > 2000:
-#         cv2.drawContours(filtered_mask, [contour], -1, 255, thickness=cv2.FILLED)
-#
-# cv2.imshow('image', cv2.hconcat([raw_image,image,]))
-# cv2.waitKey()
