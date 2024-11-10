@@ -223,22 +223,18 @@ def downscale_bbox(bbox, downscale_factor):
     return (new_xmin, new_ymin, new_width, new_height)
 
 
-def is_bbox2_within_bbox1(bbox1, bbox2):
-    # Unpacking bbox1 and bbox2
-    xmin1, ymin1, width1, height1 = bbox1
-    xmin2, ymin2, width2, height2 = bbox2
+def is_bbox_1_center_in_bbox_2(bbox1, bbox2):
+    x1, y1, w1, h1 = bbox1
+    x2, y2, w2, h2 = bbox2
 
-    # Calculate the bottom-right corners of bbox1 and bbox2
-    xmax1, ymax1 = xmin1 + width1, ymin1 + height1
-    xmax2, ymax2 = xmin2 + width2, ymin2 + height2
+    center_x = x1 + w1 / 2
+    center_y = y1 + h1 / 2
 
-    # Check if bbox2 is inside bbox1
-    return (xmin1 <= xmin2 <= xmax1 and
-            ymin1 <= ymin2 <= ymax1
-            # and
-            # xmax1 >= xmax2 and
-            # ymax1 >= ymax2
-            )
+    # Check if the center of BBox1 lies within BBox2
+    if (x2 <= center_x <= x2 + w2) and (y2 <= center_y <= y2 + h2):
+        return True
+    else:
+        return False
 
 
 def get_relative_bbox2_within_bbox1(bbox1, bbox2):
@@ -296,3 +292,69 @@ def draw_sign(image, is_positive, line_length=100, line_thickness=5):
                  line_thickness)
 
     return image
+
+
+def bbox_points_to_wh(bbox):
+    (x1, y1), (x2, y2) = bbox
+    w = x2 - x1
+    h = y2 - y1
+    return x1, y1, w, h
+
+
+def bbox_wh_to_points(bbox):
+    x1, y1, w, h = bbox
+    x2 = w + x1
+    y2 = h + y1
+    return (x1, y1), (x2, y2)
+
+
+def calculate_bbox_overlap(bbox1, bbox2):
+    if len(bbox1) == 2 and len(bbox2) == 2:
+        bbox1 = bbox_points_to_wh(bbox1)
+        bbox2 = bbox_points_to_wh(bbox2)
+
+    x1, y1, w1, h1 = bbox1
+    x2, y2, w2, h2 = bbox2
+
+    x1_br, y1_br = x1 + w1, y1 + h1
+    x2_br, y2_br = x2 + w2, y2 + h2
+
+    x_int_left = max(x1, x2)
+    y_int_top = max(y1, y2)
+    x_int_right = min(x1_br, x2_br)
+    y_int_bottom = min(y1_br, y2_br)
+
+    if x_int_right <= x_int_left or y_int_bottom <= y_int_top:
+        return 0.0
+
+    intersect_w = x_int_right - x_int_left
+    intersect_h = y_int_bottom - y_int_top
+
+    intersect_area = intersect_w * intersect_h
+    bbox1_area = w1 * h1
+
+    return intersect_area / bbox1_area
+
+
+def relative_bbox_to_absolute(target_bbox, reference_bbox):
+    xmin1, ymin1, _, _ = reference_bbox
+    xmin2, ymin2, width2, height2 = target_bbox
+    xmin2_absolute = xmin1 + xmin2
+    ymin2_absolute = ymin1 + ymin2
+    return (xmin2_absolute, ymin2_absolute, width2, height2)
+
+
+def absolute_bbox_to_relative(target_bbox, reference_bbox):
+    xmin1, ymin1, w1, h1 = target_bbox
+    xmin2, ymin2, _, _ = reference_bbox
+    xmin1_in_bbox2 = xmin1 - xmin2
+    ymin1_in_bbox2 = ymin1 - ymin2
+    return (xmin1_in_bbox2, ymin1_in_bbox2, w1, h1)
+
+
+def mean_blur_image(image, kernel_size=5):
+    return cv2.GaussianBlur(image, (kernel_size, kernel_size), 0)
+
+
+def downscale_image(image, factor):
+    return cv2.resize(image, (image.shape[0] // factor, image.shape[1] // factor), interpolation=cv2.INTER_AREA)

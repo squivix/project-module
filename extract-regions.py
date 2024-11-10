@@ -15,6 +15,22 @@ if hasattr(os, 'add_dll_directory'):
         import openslide
 else:
     import openslide
+def is_bbox2_within_bbox1(bbox1, bbox2):
+    # Unpacking bbox1 and bbox2
+    xmin1, ymin1, width1, height1 = bbox1
+    xmin2, ymin2, width2, height2 = bbox2
+
+    # Calculate the bottom-right corners of bbox1 and bbox2
+    xmax1, ymax1 = xmin1 + width1, ymin1 + height1
+    xmax2, ymax2 = xmin2 + width2, ymin2 + height2
+
+    # Check if bbox2 is inside bbox1
+    return (xmin1 <= xmin2 <= xmax1 and
+            ymin1 <= ymin2 <= ymax1
+            # and
+            # xmax1 >= xmax2 and
+            # ymax1 >= ymax2
+            )
 
 slide_file_path = "data/whole-slides/gut/522934.svs"
 output_dir = "output/temp"

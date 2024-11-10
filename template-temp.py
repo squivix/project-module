@@ -3,39 +3,11 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from numpy.core.defchararray import lower
+
+from utils import calculate_bbox_overlap, mean_blur_image, downscale_image
 
 cv2.namedWindow("image", cv2.WND_PROP_FULLSCREEN)
 cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
-
-
-def preprocess(image):
-    return cv2.GaussianBlur(image, (5, 5), 0)
-
-
-def downscale(image, factor):
-    return cv2.resize(image, (image.shape[0] // factor, image.shape[1] // factor), interpolation=cv2.INTER_AREA)
-
-
-# Helper function to calculate overlap percentage
-def calculate_overlap(region1, region2):
-    x1, y1 = region1[0]
-    x2, y2 = region1[1]
-    x3, y3 = region2[0]
-    x4, y4 = region2[1]
-
-    # Calculate the area of intersection
-    xi1, yi1 = max(x1, x3), max(y1, y3)
-    xi2, yi2 = min(x2, x4), min(y2, y4)
-    intersection_width = max(0, xi2 - xi1)
-    intersection_height = max(0, yi2 - yi1)
-    intersection_area = intersection_width * intersection_height
-
-    # Calculate the area of the template (fixed size)
-    template_area = (x2 - x1) * (y2 - y1)
-
-    # Return overlap as a percentage of the template area
-    return intersection_area / template_area
 
 
 def main():  # Define parameters
@@ -48,8 +20,8 @@ def main():  # Define parameters
     overlap_threshold = 0.2  # Allowable overlap percentage (20%)
 
     # Load and downscale the main image
-    raw_image = downscale(cv2.imread('data/tiles/big02.png'), ds_factor)
-    image = preprocess(raw_image)
+    raw_image = downscale_image(cv2.imread('data/tiles/big02.png'), ds_factor)
+    image = mean_blur_image(raw_image)
     main_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # Store all matches with confidence scores
@@ -57,21 +29,21 @@ def main():  # Define parameters
 
     # Loop through all templates in the directory
     for template_name in os.listdir(template_dir):
-        if lower(Path(template_name).suffix) not in [".png", ".jpg", ".jpeg"]:
+        if Path(template_name).suffix.lower() not in [".png", ".jpg", ".jpeg"]:
             continue
         template_path = os.path.join(template_dir, template_name)
         print(template_path)
 
         # Load each template and downscale
-        raw_template = downscale(cv2.imread(template_path, cv2.IMREAD_UNCHANGED), ds_factor)
+        raw_template = downscale_image(cv2.imread(template_path, cv2.IMREAD_UNCHANGED), ds_factor)
 
         # Resize the template to a fixed size for standardized matching
         if raw_template.shape[2] == 4:  # Check if it has an alpha channel
             template_mask = np.where(cv2.resize(raw_template[:, :, 3], output_template_size) > 0, 255, 0).astype(np.uint8)
-            template = preprocess(cv2.resize(raw_template[:, :, :3], output_template_size))
+            template = mean_blur_image(cv2.resize(raw_template[:, :, :3], output_template_size))
         else:
             template_mask = None
-            template = preprocess(cv2.resize(raw_template, output_template_size))
+            template = mean_blur_image(cv2.resize(raw_template, output_template_size))
 
         # Convert the template to grayscale
         template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
@@ -99,7 +71,7 @@ def main():  # Define parameters
         # Check if this region overlaps with any already selected regions
         overlap = False
         for (existing_top_left, existing_bottom_right) in filtered_matches:
-            overlap_percentage = calculate_overlap((top_left, bottom_right), (existing_top_left, existing_bottom_right))
+            overlap_percentage = calculate_bbox_overlap((top_left, bottom_right), (existing_top_left, existing_bottom_right))
             if overlap_percentage > overlap_threshold:
                 overlap = True
                 break
