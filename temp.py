@@ -76,7 +76,7 @@ def grid_segment_slides(slides_input_dir, callback=None, filter=None, cell_size=
         # cv2.imwrite(f"{root_output_dir}/{(slide_filename)}/{level}/slide-grid.png", full_slide)
 
 
-def is_not_mostly_blank(cell, non_blank_percentage=0.5, blank_threshold=240):
+def is_not_mostly_blank(cell, non_blank_percentage=0.5, blank_threshold=235):
     cell_gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
     non_white_pixels = np.sum(cell_gray < blank_threshold)
     pure_black_pixels = np.sum(cell_gray == 0)
@@ -99,6 +99,8 @@ def extract_candidates(cell, cell_meta_data):
     candidate_size = 256
     outline_width = 10
     extension = "png"
+    display = True
+    display_copy = cell.copy()
 
     with open(f"data/whole-slides/gut/{slide_filename}.json") as f:
         positive_rois = [(roi["x_min"], roi["y_min"], roi["width"], roi["height"]) for roi in json.load(f)]
@@ -107,16 +109,16 @@ def extract_candidates(cell, cell_meta_data):
         if is_bbox_1_center_in_bbox_2(positive_bbox, cell_meta_data["cell_bbox_level_0"]):
             relative_positive_bbox = absolute_bbox_to_relative(positive_bbox, cell_meta_data["cell_bbox_level_0"])
             positive_rois_in_cell.append(positive_bbox)
-            cv2.rectangle(cell, (relative_positive_bbox[0], relative_positive_bbox[1]),
-                          (relative_positive_bbox[0] + relative_positive_bbox[2], relative_positive_bbox[1] + relative_positive_bbox[3]), (0, 0, 255), outline_width)
+            if display:
+                cv2.rectangle(display_copy, (relative_positive_bbox[0], relative_positive_bbox[1]),
+                              (relative_positive_bbox[0] + relative_positive_bbox[2], relative_positive_bbox[1] + relative_positive_bbox[3]), (0, 0, 255), outline_width)
 
-    # if len(positive_rois_in_cell) == 0:
-    #     return
-    filtered_matches = template_match(cell, match_size=candidate_size, match_threshold=0.3, overlap_threshold=0.3, filter=lambda candidate: is_not_mostly_blank(candidate, non_blank_percentage=0.1))
-    # Draw rectangles for each filtered match
+    filtered_matches = template_match(cell, match_size=candidate_size, match_threshold=0.3, overlap_threshold=0.3)
+
     positive_rois_caught = set()
     for candidate_bbox in filtered_matches:
-        cv2.rectangle(cell, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]), (0, 255, 0), outline_width)
+        if display:
+            cv2.rectangle(display_copy, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]), (0, 255, 0), outline_width)
         is_positive = False
         abs_candidate_bbox = relative_bbox_to_absolute(candidate_bbox, cell_meta_data["cell_bbox_level_0"])
         for positive_bbox in positive_rois_in_cell:
@@ -130,17 +132,19 @@ def extract_candidates(cell, cell_meta_data):
         abs_x_min, abs_y_min, _, _ = abs_candidate_bbox
         if is_positive:
             output_path = f"{candidate_output_dir}/positive/"
+        elif not is_not_mostly_blank(crop, non_blank_percentage=0.1):
+            output_path = f"{candidate_output_dir}/blank/"
         else:
             output_path = f"{candidate_output_dir}/negative/"
         os.makedirs(output_path, exist_ok=True)
         cv2.imwrite(f"{output_path}/{abs_x_min}_{abs_y_min}_{candidate_size}_{candidate_size}.{extension}", crop)
     print(f"{len(positive_rois_caught)} / {len(positive_rois_in_cell)}")
-    # Display the final image with non-overlapping, best-matching regions highlighted
-    # cv2.namedWindow("image", cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
-    # cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
-    # cv2.imshow('image', cell)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+    if display:
+        cv2.namedWindow("image", cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
+        cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+        cv2.imshow('image', display_copy)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
 
 def template_match(image, ds_factor=2, match_threshold=0.5, match_size=256, overlap_threshold=0.2, templates_dir='data/templates/gastric-glands/all', filter=None):
