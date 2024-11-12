@@ -358,3 +358,8 @@ def mean_blur_image(image, kernel_size=5):
 
 def downscale_image(image, factor):
     return cv2.resize(image, (image.shape[0] // factor, image.shape[1] // factor), interpolation=cv2.INTER_AREA)
+
+
+def crop_cv_image(image, bbox):
+    x_min, y_min, width, height = bbox
+    return image[y_min:y_min + height, x_min:x_min + width]
