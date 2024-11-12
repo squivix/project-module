@@ -22,6 +22,7 @@ else:
 def grid_segment_slides(slides_input_dir, callback=None, filter=None, cell_size=256, level=0):
     # if os.path.exists(root_output_dir):
     #     shutil.rmtree(root_output_dir)
+    only_positive = False
     for slide_filename in os.listdir(slides_input_dir):
         if Path(slide_filename).suffix != ".svs":
             continue
@@ -51,8 +52,8 @@ def grid_segment_slides(slides_input_dir, callback=None, filter=None, cell_size=
                     for positive_bbox in positive_rois:
                         if is_bbox_1_center_in_bbox_2(positive_bbox, cell_bbox_level_0):
                             positive_rois_in_cell.append(positive_bbox)
-                    # if len(positive_rois_in_cell) == 0:
-                    #     continue
+                    if only_positive and len(positive_rois_in_cell) == 0:
+                        continue
 
                     cell = np.array(slide.read_region((x, y), level, (ds_cell_size, ds_cell_size)))
 
@@ -69,9 +70,10 @@ def grid_segment_slides(slides_input_dir, callback=None, filter=None, cell_size=
                             "cell_height_in_level_0": cell_size,
                             "slide_filename": slide_filename,
                             "slide_level": level,
+                            "level_downsample": slide.level_downsamples[level],
                             "cell_bbox_level_0": cell_bbox_level_0,
                         }
-                        print(cell_meta_data["cell_bbox_level_0"])
+                        # print(cell_meta_data["cell_bbox_level_0"])
                         callback(cell, cell_meta_data)
         # cv2.imwrite(f"{root_output_dir}/{(slide_filename)}/{level}/slide-grid.png", full_slide)
 
@@ -93,42 +95,44 @@ def save_cell(cell, cell_meta_data, root_output_dir, extension="png"):
     cv2.imwrite(cell_file_path, cell)
 
 
-def extract_candidates(cell, cell_meta_data):
-    slide_filename = cell_meta_data["slide_filename"]
+def extract_candidates(cell, cell_metadata):
+    slide_filename = cell_metadata["slide_filename"]
     candidate_output_dir = f"output/candidates/{slide_filename}"
     candidate_size = 256
-    outline_width = 10
+    ds_candidate_size = round(candidate_size / cell_metadata["level_downsample"])
+    outline_width = 5
     extension = "png"
-    display = True
+    display = False
     display_copy = cell.copy()
 
     with open(f"data/whole-slides/gut/{slide_filename}.json") as f:
         positive_rois = [(roi["x_min"], roi["y_min"], roi["width"], roi["height"]) for roi in json.load(f)]
     positive_rois_in_cell = []
     for positive_bbox in positive_rois:
-        if is_bbox_1_center_in_bbox_2(positive_bbox, cell_meta_data["cell_bbox_level_0"]):
-            relative_positive_bbox = absolute_bbox_to_relative(positive_bbox, cell_meta_data["cell_bbox_level_0"])
-            positive_rois_in_cell.append(positive_bbox)
+        if is_bbox_1_center_in_bbox_2(positive_bbox, cell_metadata["cell_bbox_level_0"]):
+            relative_positive_bbox = absolute_bbox_to_relative(positive_bbox, cell_metadata["cell_bbox_level_0"])
+            relative_positive_bbox = downscale_bbox(relative_positive_bbox, cell_metadata["level_downsample"])
+            positive_rois_in_cell.append(relative_positive_bbox)
             if display:
                 cv2.rectangle(display_copy, (relative_positive_bbox[0], relative_positive_bbox[1]),
                               (relative_positive_bbox[0] + relative_positive_bbox[2], relative_positive_bbox[1] + relative_positive_bbox[3]), (0, 0, 255), outline_width)
 
-    filtered_matches = template_match(cell, match_size=candidate_size, match_threshold=0.3, overlap_threshold=0.3)
+    filtered_matches = template_match(cell, match_size=ds_candidate_size, match_threshold=0.4, overlap_threshold=0.3)
 
     positive_rois_caught = set()
     for candidate_bbox in filtered_matches:
         if display:
             cv2.rectangle(display_copy, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]), (0, 255, 0), outline_width)
         is_positive = False
-        abs_candidate_bbox = relative_bbox_to_absolute(candidate_bbox, cell_meta_data["cell_bbox_level_0"])
+
         for positive_bbox in positive_rois_in_cell:
             # print(f"{positive_bbox}, {abs_candidate_bbox}")
-            if is_bbox_1_center_in_bbox_2(positive_bbox, abs_candidate_bbox):
+            if is_bbox_1_center_in_bbox_2(positive_bbox, candidate_bbox):
                 positive_rois_caught.add(positive_bbox)
                 is_positive = True
                 break
-
-        crop = cell[candidate_bbox[1]:candidate_bbox[1] + candidate_size, candidate_bbox[0]:candidate_bbox[0] + candidate_size]
+        abs_candidate_bbox = relative_bbox_to_absolute(candidate_bbox, cell_metadata["cell_bbox_level_0"])
+        crop = cell[candidate_bbox[1]:candidate_bbox[1] + ds_candidate_size, candidate_bbox[0]:candidate_bbox[0] + ds_candidate_size]
         abs_x_min, abs_y_min, _, _ = abs_candidate_bbox
         if is_positive:
             output_path = f"{candidate_output_dir}/positive/"
@@ -138,7 +142,8 @@ def extract_candidates(cell, cell_meta_data):
             output_path = f"{candidate_output_dir}/negative/"
         os.makedirs(output_path, exist_ok=True)
         cv2.imwrite(f"{output_path}/{abs_x_min}_{abs_y_min}_{candidate_size}_{candidate_size}.{extension}", crop)
-    print(f"{len(positive_rois_caught)} / {len(positive_rois_in_cell)}")
+    if len(positive_rois_caught) < len(positive_rois_in_cell):
+        print(f"{cell_metadata['slide_filename']} {cell_metadata['cell_bbox_level_0']} {len(positive_rois_caught)} / {len(positive_rois_in_cell)}")
     if display:
         cv2.namedWindow("image", cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
         cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
@@ -147,7 +152,7 @@ def extract_candidates(cell, cell_meta_data):
         cv2.destroyAllWindows()
 
 
-def template_match(image, ds_factor=2, match_threshold=0.5, match_size=256, overlap_threshold=0.2, templates_dir='data/templates/gastric-glands/all', filter=None):
+def template_match(image, ds_factor=2, match_threshold=0.5, match_size=256, overlap_threshold=0.2, templates_dir='data/templates/gastric-glands/1/all/', filter=None):
     image = mean_blur_image(image)
     image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
@@ -196,7 +201,7 @@ def main():
     grid_segment_slides(
         slides_input_dir="data/whole-slides/gut",
         cell_size=4096,
-        level=0,
+        level=1,
         filter=lambda cell, x, y, slide_filename: is_not_mostly_blank(cell, non_blank_percentage=0.35),
         # callback=lambda cell, cell_meta_data: save_cell(cell, cell_meta_data, "output/tiles"),
         callback=extract_candidates
