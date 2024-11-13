@@ -12,10 +12,11 @@ class OversampledDataset(Dataset):
         return len(self.original_dataset) + len(self.oversampled_indexes)
 
     def __getitem__(self, idx):
-        if idx < len(self.oversampled_indexes):
+        if idx < len(self.original_dataset):
             return self.original_dataset[idx]
 
         original_idx = self.oversampled_indexes[idx - len(self.original_dataset)]
         x, y = self.original_dataset.get_item_untransformed(original_idx)
-        x = self.transform(x)
+        if self.transform is not None:
+            x = self.transform(x)
         return x, y

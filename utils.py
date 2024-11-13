@@ -178,13 +178,14 @@ def undersample_dataset(dataset: Dataset, target_size: int = None):
 
     undersampled_indices = []
     for indices in label_indices.values():
-        undersampled_indices.extend(np.random.choice(indices, target_size, replace=False).tolist())
+        undersampled_indices.extend(np.random.choice(indices, min(target_size, len(indices)), replace=False).tolist())
     subset = Subset(dataset, undersampled_indices)
     subset.labels = dataset.labels[undersampled_indices]
+    subset.get_item_untransformed = dataset.get_item_untransformed
     return subset
 
 
-def oversample_dataset(dataset: Dataset, transforms, target_size: int = None):
+def oversample_dataset(dataset: Dataset, transforms, augment_Size: int = None):
     labels = dataset.labels
     label_indices = defaultdict(list)
 
@@ -194,12 +195,12 @@ def oversample_dataset(dataset: Dataset, transforms, target_size: int = None):
             label = label.item()
         label_indices[label].append(idx)
 
-    if target_size is None:
-        target_size = max(len(indices) for indices in label_indices.values())
+    if augment_Size is None:
+        augment_Size = max(len(indices) for indices in label_indices.values())
 
     minority_label = min(label_indices, key=lambda k: len(label_indices[k]))
 
-    oversampled_indices = np.random.choice(label_indices[minority_label], target_size, replace=True).tolist()
+    oversampled_indices = np.random.choice(label_indices[minority_label], augment_Size, replace=True).tolist()
     return OversampledDataset(dataset, oversampled_indices, transforms)
 
 
