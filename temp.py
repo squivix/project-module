@@ -7,7 +7,8 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-from utils import downscale_bbox, calculate_bbox_overlap, downscale_image, mean_blur_image, relative_bbox_to_absolute, is_bbox_1_center_in_bbox_2, absolute_bbox_to_relative, crop_cv_image
+from utils import downscale_bbox, calculate_bbox_overlap, downscale_image, mean_blur_image, relative_bbox_to_absolute, is_bbox_1_center_in_bbox_2, absolute_bbox_to_relative, crop_cv_image, \
+    upscale_bbox
 
 if hasattr(os, 'add_dll_directory'):
     # Windows
@@ -22,7 +23,7 @@ else:
 def grid_segment_slides(slides_input_dir, callback=None, filter=None, cell_size=256, level=0):
     # if os.path.exists(root_output_dir):
     #     shutil.rmtree(root_output_dir)
-    only_positive = False
+    only_positive = True
     for slide_filename in os.listdir(slides_input_dir):
         if Path(slide_filename).suffix != ".svs":
             continue
@@ -72,6 +73,7 @@ def grid_segment_slides(slides_input_dir, callback=None, filter=None, cell_size=
                             "slide_level": level,
                             "level_downsample": slide.level_downsamples[level],
                             "cell_bbox_level_0": cell_bbox_level_0,
+                            "slide": slide
                         }
                         # print(cell_meta_data["cell_bbox_level_0"])
                         callback(cell, cell_meta_data)
@@ -97,7 +99,7 @@ def save_cell(cell, cell_meta_data, root_output_dir, extension="png"):
 
 def extract_candidates(cell, cell_metadata):
     slide_filename = cell_metadata["slide_filename"]
-    candidate_output_dir = f"output/candidates/{slide_filename}"
+    candidate_output_dir = f"output/candidates/"
     candidate_size = 256
     ds_candidate_size = round(candidate_size / cell_metadata["level_downsample"])
     outline_width = 5
@@ -117,7 +119,7 @@ def extract_candidates(cell, cell_metadata):
                 cv2.rectangle(display_copy, (relative_positive_bbox[0], relative_positive_bbox[1]),
                               (relative_positive_bbox[0] + relative_positive_bbox[2], relative_positive_bbox[1] + relative_positive_bbox[3]), (0, 0, 255), outline_width)
 
-    filtered_matches = template_match(cell, match_size=ds_candidate_size, match_threshold=0.4, overlap_threshold=0.3)
+    filtered_matches = template_match(cell, match_size=ds_candidate_size, match_threshold=0.4, overlap_threshold=0.25)
 
     positive_rois_caught = set()
     for candidate_bbox in filtered_matches:
@@ -131,19 +133,21 @@ def extract_candidates(cell, cell_metadata):
                 positive_rois_caught.add(positive_bbox)
                 is_positive = True
                 break
-        abs_candidate_bbox = relative_bbox_to_absolute(candidate_bbox, cell_metadata["cell_bbox_level_0"])
-        crop = cell[candidate_bbox[1]:candidate_bbox[1] + ds_candidate_size, candidate_bbox[0]:candidate_bbox[0] + ds_candidate_size]
+        abs_candidate_bbox = relative_bbox_to_absolute(upscale_bbox(candidate_bbox,cell_metadata["level_downsample"]), cell_metadata["cell_bbox_level_0"])
+
+        # crop = cell[candidate_bbox[1]:candidate_bbox[1] + ds_candidate_size, candidate_bbox[0]:candidate_bbox[0] + ds_candidate_size]
         abs_x_min, abs_y_min, _, _ = abs_candidate_bbox
+        crop = np.array(cell_metadata["slide"].read_region((abs_x_min, abs_y_min), 0, (candidate_size, candidate_size)))
         if is_positive:
             output_path = f"{candidate_output_dir}/positive/"
-        elif not is_not_mostly_blank(crop, non_blank_percentage=0.1):
-            output_path = f"{candidate_output_dir}/blank/"
         else:
             output_path = f"{candidate_output_dir}/negative/"
         os.makedirs(output_path, exist_ok=True)
-        cv2.imwrite(f"{output_path}/{abs_x_min}_{abs_y_min}_{candidate_size}_{candidate_size}.{extension}", crop)
-    if len(positive_rois_caught) < len(positive_rois_in_cell):
-        print(f"{cell_metadata['slide_filename']} {cell_metadata['cell_bbox_level_0']} {len(positive_rois_caught)} / {len(positive_rois_in_cell)}")
+        if is_not_mostly_blank(crop, non_blank_percentage=0.1):
+            # output_path = f"{candidate_output_dir}/blank/"
+            cv2.imwrite(f"{output_path}/{slide_filename}_{abs_x_min}_{abs_y_min}_{candidate_size}_{candidate_size}.{extension}", crop)
+    # if len(positive_rois_caught) < len(positive_rois_in_cell):
+    #     print(f"{cell_metadata['slide_filename']} {cell_metadata['cell_bbox_level_0']} {len(positive_rois_caught)} / {len(positive_rois_in_cell)}")
     if display:
         cv2.namedWindow("image", cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
         cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)

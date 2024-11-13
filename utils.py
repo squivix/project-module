@@ -223,6 +223,19 @@ def downscale_bbox(bbox, downscale_factor):
     return (new_xmin, new_ymin, new_width, new_height)
 
 
+def upscale_bbox(bbox, downscale_factor):
+    xmin, ymin, width, height = bbox
+    downscale_factor = int(downscale_factor)
+    # Downscale each value
+    new_xmin = int(xmin * downscale_factor)
+    new_ymin = int(ymin * downscale_factor)
+    new_width = int(width * downscale_factor)
+    new_height = int(height * downscale_factor)
+
+    # Return the new bounding box as a tuple
+    return (new_xmin, new_ymin, new_width, new_height)
+
+
 def is_bbox_1_center_in_bbox_2(bbox1, bbox2):
     x1, y1, w1, h1 = bbox1
     x2, y2, w2, h2 = bbox2

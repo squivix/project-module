@@ -15,7 +15,7 @@ default_image_transform = v2.Compose([
 
 
 class LabeledImageDataset(Dataset):
-    def __init__(self, root_dir, transform=None, extension='.jpg', ignore_cache=False):
+    def __init__(self, root_dir, transform=None, extension='.[jpg][png]*', ignore_cache=False):
         cache_file_path = f"{os.path.dirname(root_dir)}/{os.path.basename(root_dir)}-cache.pickle"
         if os.path.exists(cache_file_path) and not ignore_cache:
             with open(cache_file_path, "rb") as f:
