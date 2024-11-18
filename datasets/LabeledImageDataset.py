@@ -43,8 +43,7 @@ class LabeledImageDataset(Dataset):
     def get_item_untransformed(self, idx):
         img_path = self.file_paths[idx]
         x = read_image(img_path, mode=ImageReadMode.RGB)
-        y = self.labels[idx]
-        return x, y
+        return x
 
     def __getitem__(self, idx):
         img_path = self.file_paths[idx]
@@ -53,7 +52,7 @@ class LabeledImageDataset(Dataset):
         if self.transform:
             x = self.transform(x)
         y = self.labels[idx]
-        return x, y
+        return x, y,idx
 
     def to_dict(self):
         return {

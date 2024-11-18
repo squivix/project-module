@@ -142,6 +142,7 @@ def reduce_dataset(dataset: Dataset, discard_ratio=0.0):
         subset.labels = subset_labels
         subset.get_item_untransformed = dataset.get_item_untransformed
     else:
+        dataset.dataset = dataset
         subset = dataset
     return subset
 
@@ -185,7 +186,20 @@ def undersample_dataset(dataset: Dataset, target_size: int = None):
     return subset
 
 
-def oversample_dataset(dataset: Dataset, transforms, augment_Size: int = None):
+default_oversample_transforms = v2.Compose([
+    v2.ToImage(),
+    # v2.RandomResizedCrop(size=(256, 256), scale=(0.8, 1.0)),
+    v2.RandomHorizontalFlip(p=0.5),
+    v2.RandomVerticalFlip(p=0.5),
+    v2.RandomRotation(degrees=30),
+    # v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+    # v2.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),
+    v2.ToDtype(torch.float32, scale=True),
+    v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+
+def oversample_dataset(dataset: Dataset, transforms=None, augment_Size: int = None):
     labels = dataset.labels
     label_indices = defaultdict(list)
 
@@ -201,7 +215,9 @@ def oversample_dataset(dataset: Dataset, transforms, augment_Size: int = None):
     minority_label = min(label_indices, key=lambda k: len(label_indices[k]))
 
     oversampled_indices = np.random.choice(label_indices[minority_label], augment_Size, replace=True).tolist()
-    return OversampledDataset(dataset, oversampled_indices, transforms)
+    if transforms is None:
+        transforms = default_oversample_transforms
+    return OversampledDataset(dataset, oversampled_indices, minority_label, transforms)
 
 
 def clear_dir(dir_path_string):
