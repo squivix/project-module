@@ -52,7 +52,7 @@ class LabeledImageDataset(Dataset):
         if self.transform:
             x = self.transform(x)
         y = self.labels[idx]
-        return x, y,idx
+        return x, y
 
     def to_dict(self):
         return {
