@@ -13,7 +13,7 @@ from torch.optim import Adam
 from torch.utils.data import SubsetRandomSampler, DataLoader, Subset
 from tqdm import tqdm
 
-from models.mlp import MLPModel, weight_reset
+from models.mlp import MLPBinaryClassifier, weight_reset
 from utils import calc_binary_classification_metrics, undersample_dataset
 
 
@@ -47,8 +47,8 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
     i = 0
     for hidden_layers, units, dropout, threshold in itertools.product(hidden_layer_combs, unit_combs, dropout_combs,
                                                                         threshold_combs):
-        model_builder = MLPModel(in_features=2048, hidden_layers=hidden_layers, units_per_layer=units,
-                                 dropout=dropout, threshold=threshold)
+        model_builder = MLPBinaryClassifier(in_features=2048, hidden_layers=hidden_layers, units_per_layer=units,
+                                            dropout=dropout, threshold=threshold)
         for learning_rate, weight_decay in itertools.product(learning_rate_combs, weight_decay_combs):
             param_key = f"(hidden_layers={hidden_layers}, units={units}, dropout={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay})"
             print(f"({i}/{max_iters}) {param_key}")

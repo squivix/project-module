@@ -2,6 +2,7 @@ import os
 import shutil
 from pathlib import Path
 
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -12,8 +13,8 @@ import xml.etree.ElementTree as ET
 
 
 def extract_possible_mislabels():
-    model = torch.load("pickled_model_20.pth")
-    dataset = LabeledImageDataset("data/candidates")
+    model = torch.load("model.pth")
+    dataset = LabeledImageDataset("data/candidates", with_index=True)
     dataset = reduce_dataset(dataset, discard_ratio=0.0)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     batch_size = 256
@@ -81,21 +82,30 @@ def modify_annotations(xml_file, regions):
     return ET.tostring(root, encoding="unicode")
 
 
+def extract_negative_set():
+    df = pd.read_csv("data/mislabels/mislabeled-candidates.csv")
+    df['File Name'] = df['File Name'].apply(lambda x: f'{"_".join(x.split("_")[1:])}_256_256')
+    filtered_df = df[df['Classification (manual)'] == 'negative']
+    return set(filtered_df["File Name"])
+
+
 dataset, sorted_probs, sorted_indexes = extract_possible_mislabels()
 candidate_output_dir = 'output/mislabel-candidates/'
+
+negative_set = extract_negative_set()
 if os.path.exists(candidate_output_dir):
     shutil.rmtree(candidate_output_dir)
 os.makedirs(f"{candidate_output_dir}/images", exist_ok=True)
 os.makedirs(f"{candidate_output_dir}/annotations", exist_ok=True)
-threshold = 0.9
+threshold = 0.75
 slide_name_to_bboxes = {}
 for i in range(len(sorted_indexes)):
     dataset_index = sorted_indexes[i]
     prob = sorted_probs[i]
     src_file_path = dataset.dataset.file_paths[dataset_index]
-    if prob >= threshold and "negative" in src_file_path:
-        path_obj = Path(src_file_path)
-        new_file_name = f"{str(prob)[2:]}_{path_obj.stem}{path_obj.suffix}"
+    path_obj = Path(src_file_path)
+    if prob >= threshold and "negative" in src_file_path and path_obj.stem not in negative_set:
+        new_file_name = f"{f'{prob:.8f}'[2:]}_{path_obj.stem}{path_obj.suffix}"
         print(new_file_name)
         shutil.copy(src_file_path, f"{candidate_output_dir}/images/{new_file_name}")
         slide_filename, x_min, y_min, width, height = path_obj.stem.split("_")

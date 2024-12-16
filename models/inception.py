@@ -2,7 +2,7 @@ import torchvision
 from torch import nn
 from torchvision.models import Inception_V3_Weights, InceptionOutputs
 
-from models.mlp import MLPModel
+from models.mlp import MLPBinaryClassifier
 
 
 class InceptionV3Model(nn.Module):
@@ -14,10 +14,10 @@ class InceptionV3Model(nn.Module):
         for param in self.pretrained_model.parameters():
             param.requires_grad = False
 
-        self.model = MLPModel(in_features=2048,
-                              hidden_layers=hidden_layers,
-                              units_per_layer=units_per_layer,
-                              dropout=dropout)
+        self.model = MLPBinaryClassifier(in_features=2048,
+                                         hidden_layers=hidden_layers,
+                                         units_per_layer=units_per_layer,
+                                         dropout=dropout)
 
     def forward(self, x):
         output = self.pretrained_model.forward(x)

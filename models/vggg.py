@@ -2,7 +2,7 @@ import torchvision
 from torch import nn
 from torchvision.models import VGG16_Weights
 
-from models.mlp import MLPModel
+from models.mlp import MLPBinaryClassifier
 
 
 class VggModel(nn.Module):
@@ -13,7 +13,7 @@ class VggModel(nn.Module):
         for param in self.pretrained_model.parameters():
             param.requires_grad = False
 
-        self.model = MLPModel(in_features=25088, hidden_layers=hidden_layers, units_per_layer=units_per_layer, dropout=dropout)
+        self.model = MLPBinaryClassifier(in_features=25088, hidden_layers=hidden_layers, units_per_layer=units_per_layer, dropout=dropout)
 
     def forward(self, x):
         pre_logits = self.pretrained_model.forward(x)

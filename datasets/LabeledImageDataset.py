@@ -15,8 +15,9 @@ default_image_transform = v2.Compose([
 
 
 class LabeledImageDataset(Dataset):
-    def __init__(self, root_dir, transform=None, extension='.[jpg][png]*', ignore_cache=False):
+    def __init__(self, root_dir, transform=None, extension='.[jpg][png]*', ignore_cache=False, with_index=False):
         cache_file_path = f"{os.path.dirname(root_dir)}/{os.path.basename(root_dir)}-cache.pickle"
+
         if os.path.exists(cache_file_path) and not ignore_cache:
             with open(cache_file_path, "rb") as f:
                 file_paths, labels = pickle.load(f)
@@ -36,6 +37,7 @@ class LabeledImageDataset(Dataset):
         if transform is None:
             transform = default_image_transform
         self.transform = transform
+        self.with_index = with_index
 
     def __len__(self):
         return len(self.labels)
@@ -52,6 +54,8 @@ class LabeledImageDataset(Dataset):
         if self.transform:
             x = self.transform(x)
         y = self.labels[idx]
+        if self.with_index:
+            return x, y, idx
         return x, y
 
     def to_dict(self):
