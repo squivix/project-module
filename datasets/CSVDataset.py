@@ -19,7 +19,8 @@ class CSVDataset(Dataset):
             self.features = []
             self.labels = []
             for i, line in enumerate(file):
-                if skip_header and i == 0:
+                line = line.strip()
+                if skip_header and i == 0 or line == "":
                     continue
                 self.features.append(torch.tensor([float(f) for f in line.split(",")[:-2]]))
                 self.labels.append(float(line.split(",")[-2]))

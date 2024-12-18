@@ -17,13 +17,16 @@ from models.mlp import MLPBinaryClassifier, weight_reset
 from utils import calc_binary_classification_metrics, undersample_dataset
 
 
-def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32,
+def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32,
                       hidden_layer_combs=None,
                       unit_combs=None,
                       dropout_combs=None,
                       threshold_combs=None,
                       learning_rate_combs=None,
-                      weight_decay_combs=None, ):
+                      weight_decay_combs=None,
+                      focal_alpha_combs=None,
+                      focal_gamma_combs=None,
+                      ):
     if hidden_layer_combs is None:
         hidden_layer_combs = [1]
     if unit_combs is None:
@@ -36,6 +39,10 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
         learning_rate_combs = [0.001]
     if weight_decay_combs is None:
         weight_decay_combs = [0.0]
+    if focal_alpha_combs is None:
+        focal_alpha_combs = [0.5]
+    if focal_gamma_combs is None:
+        focal_gamma_combs = [2.0]
     grid_search_start_time = int(time.time() * 1000)
     checkpoint_dir = f"checkpoints/grid-search/{grid_search_start_time}"
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -43,14 +50,14 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
     if checkpoint_file_path is not None:
         with open(checkpoint_file_path, 'rb') as checkpoint_file:
             param_to_metrics = json.load(checkpoint_file)
-    max_iters=math.prod([len(c) for c in [hidden_layer_combs, unit_combs, dropout_combs, threshold_combs, learning_rate_combs, weight_decay_combs]])
+    max_iters = math.prod([len(c) for c in [hidden_layer_combs, unit_combs, dropout_combs, threshold_combs, learning_rate_combs, weight_decay_combs, focal_alpha_combs, focal_gamma_combs]])
     i = 0
-    for hidden_layers, units, dropout, threshold in itertools.product(hidden_layer_combs, unit_combs, dropout_combs,
-                                                                        threshold_combs):
-        model_builder = MLPBinaryClassifier(in_features=2048, hidden_layers=hidden_layers, units_per_layer=units,
-                                            dropout=dropout, threshold=threshold)
+    for hidden_layers, units, dropout, threshold, focal_alpha, focal_gamma in itertools.product(hidden_layer_combs, unit_combs, dropout_combs,
+                                                                                                threshold_combs, focal_alpha_combs, focal_gamma_combs):
+        model_builder = MLPBinaryClassifier(in_features=in_features, hidden_layers=hidden_layers, units_per_layer=units,
+                                            dropout=dropout, threshold=threshold, focal_alpha=focal_alpha, focal_gamma=focal_gamma)
         for learning_rate, weight_decay in itertools.product(learning_rate_combs, weight_decay_combs):
-            param_key = f"(hidden_layers={hidden_layers}, units={units}, dropout={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay})"
+            param_key = f"(hidden_layers={hidden_layers}, units={units}, dropout={dropout}, threshold={threshold}, learning_rate={learning_rate}, weight_decay={weight_decay}, focal_alpha={focal_alpha}, focal_gamma={focal_gamma})"
             print(f"({i}/{max_iters}) {param_key}")
             if not param_key in param_to_metrics:
                 eval_metrics = kfold_train_eval(model_builder, dataset,
@@ -64,11 +71,15 @@ def kfold_grid_search(dataset, device, checkpoint_file_path=None, k=5, max_epoch
             with open(f"{checkpoint_dir}/{i}.json", "w") as f:
                 json.dump(param_to_metrics, f)
 
-            if eval_metrics["test_f1"] >= 0.5:
-                print(f"Over 0.5 f1 found with {param_key}")
-                with open(f"{checkpoint_dir}/good_f1_{i}.json", "w") as f:
+            if eval_metrics["test_mcc"] >= 0.5:
+                print(f"Over 0.5 mcc found with {param_key}")
+                with open(f"{checkpoint_dir}/good_mcc_{i}.json", "w") as f:
                     json.dump(param_to_metrics, f)
             i += 1
+    best_params = max(param_to_metrics, key=lambda k: param_to_metrics[k]['test_mcc'])
+    print()
+    print(f"Best params: {best_params}")
+    print(f"Best performance: {param_to_metrics[best_params]}")
 
 
 def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_decay=0.0, max_epochs=20,

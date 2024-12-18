@@ -140,7 +140,7 @@ def reduce_dataset(dataset: Dataset, discard_ratio=0.0):
                                                                stratify=dataset.labels)
         subset = Subset(dataset, subset_indices)
         subset.labels = subset_labels
-        subset.get_item_untransformed = dataset.get_item_untransformed
+        # subset.get_item_untransformed = dataset.get_item_untransformed
     else:
         dataset.dataset = dataset
         subset = dataset
@@ -155,9 +155,9 @@ def split_dataset(dataset: Dataset, train_ratio=0.7):
                                                                                   stratify=dataset.labels)
         train_subset = Subset(dataset, train_indices)
         train_subset.labels = train_labels
-        train_subset.get_item_untransformed = dataset.get_item_untransformed
+        # train_subset.get_item_untransformed = dataset.get_item_untransformed
         test_subset = Subset(dataset, test_indices)
-        test_subset.get_item_untransformed = dataset.get_item_untransformed
+        # test_subset.get_item_untransformed = dataset.get_item_untransformed
         test_subset.labels = test_labels
         return train_subset, test_subset
     else:
@@ -182,7 +182,7 @@ def undersample_dataset(dataset: Dataset, target_size: int = None):
         undersampled_indices.extend(np.random.choice(indices, min(target_size, len(indices)), replace=False).tolist())
     subset = Subset(dataset, undersampled_indices)
     subset.labels = dataset.labels[undersampled_indices]
-    subset.get_item_untransformed = dataset.get_item_untransformed
+    # subset.get_item_untransformed = dataset.get_item_untransformed
     return subset
 
 
