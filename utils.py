@@ -200,6 +200,9 @@ default_oversample_transforms = v2.Compose([
 
 
 def oversample_dataset(dataset: Dataset, transforms=None, augment_Size: int = None):
+    if augment_Size == 0:
+        return dataset
+
     labels = dataset.labels
     label_indices = defaultdict(list)
 
