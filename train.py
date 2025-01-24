@@ -3,14 +3,13 @@ import json
 import math
 import os
 import time
-from itertools import product
 
 import numpy
 import numpy as np
 import torch
-from sklearn.model_selection import KFold, StratifiedKFold
+from sklearn.model_selection import StratifiedKFold
 from torch.optim import Adam
-from torch.utils.data import SubsetRandomSampler, DataLoader, Subset
+from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 from models.mlp import MLPBinaryClassifier, weight_reset

@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 
 
 def extract_possible_mislabels():
-    model = torch.load("model.pth")
+    model = torch.load("model.pickle")
     dataset = LabeledImageDataset("data/candidates", with_index=True)
     dataset = reduce_dataset(dataset, discard_ratio=0.0)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
