@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from shapely import Polygon, box
+from shapely.validation import explain_validity
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.transforms import v2
@@ -243,6 +245,16 @@ def downscale_bbox(bbox, downscale_factor):
     return (new_xmin, new_ymin, new_width, new_height)
 
 
+def downscale_points(points, downscale_factor):
+    downscale_factor = int(downscale_factor)
+    new_points = []
+    for point in points:
+        new_point = tuple(c // downscale_factor for c in point)
+        new_points.append(new_point)
+
+    return new_points
+
+
 def upscale_bbox(bbox, downscale_factor):
     xmin, ymin, width, height = bbox
     downscale_factor = int(downscale_factor)
@@ -385,6 +397,14 @@ def absolute_bbox_to_relative(target_bbox, reference_bbox):
     return (xmin1_in_bbox2, ymin1_in_bbox2, w1, h1)
 
 
+def absolute_points_to_relative(target_points, reference_bbox):
+    xmin2, ymin2, _, _ = reference_bbox
+    new_points = []
+    for xmin1, ymin1 in target_points:
+        new_points.append((xmin1 - xmin2, ymin1 - ymin2))
+    return new_points
+
+
 def mean_blur_image(image, kernel_size=5):
     return cv2.GaussianBlur(image, (kernel_size, kernel_size), 0)
 
@@ -396,3 +416,18 @@ def downscale_image(image, factor):
 def crop_cv_image(image, bbox):
     x_min, y_min, width, height = bbox
     return image[y_min:y_min + height, x_min:x_min + width]
+
+
+def get_polygon_bbox_intersection(points, bbox):
+    shape1 = Polygon(points).buffer(0)
+    xmin, ymin, width, height = bbox
+    xmax, ymax = xmin + width, ymin + height
+    bbox_shape = box(xmin, ymin, xmax, ymax)
+    intersection = shape1.intersection(bbox_shape)
+
+    shape1_area = shape1.area
+    intersection_area = intersection.area
+
+    if shape1_area == 0:
+        return 0
+    return intersection_area / shape1_area

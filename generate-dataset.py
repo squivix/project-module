@@ -4,11 +4,15 @@ import os
 from pathlib import Path
 
 import cv2
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
-from utils import downscale_bbox, calculate_bbox_overlap, downscale_image, mean_blur_image, relative_bbox_to_absolute, is_bbox_1_center_in_bbox_2, absolute_bbox_to_relative, crop_cv_image, \
-    upscale_bbox
+from utils import downscale_bbox, calculate_bbox_overlap, downscale_image, mean_blur_image, relative_bbox_to_absolute, is_bbox_1_center_in_bbox_2, crop_cv_image, \
+    upscale_bbox, downscale_points, absolute_points_to_relative, get_polygon_bbox_intersection
+
+matplotlib.use('qtagg')
 
 if hasattr(os, 'add_dll_directory'):
     # Windows
@@ -104,37 +108,45 @@ def extract_candidates(cell, cell_metadata):
     ds_candidate_size = round(candidate_size / cell_metadata["level_downsample"])
     outline_width = 5
     extension = "png"
-    display = False
+    display = True
     display_copy = cell.copy()
 
     with open(f"data/whole-slides/gut/{slide_filename}.json") as f:
-        positive_rois = [(roi["x_min"], roi["y_min"], roi["width"], roi["height"]) for roi in json.load(f)]
-    positive_rois_in_cell = []
-    for positive_bbox in positive_rois:
+        positive_rois = [(roi["points"], (roi["x_min"], roi["y_min"], roi["width"], roi["height"])) for roi in json.load(f)]
+    positive_rois_indexes_in_cell = []
+    for i, positive_roi in enumerate(positive_rois):
+        positive_points, positive_bbox = positive_roi
+        # TODO fix this mess: you've got the same issue one level higher: the big cells you grid from the whole slide could split a positive roi in half and only one will have the center
         if is_bbox_1_center_in_bbox_2(positive_bbox, cell_metadata["cell_bbox_level_0"]):
-            relative_positive_bbox = absolute_bbox_to_relative(positive_bbox, cell_metadata["cell_bbox_level_0"])
-            relative_positive_bbox = downscale_bbox(relative_positive_bbox, cell_metadata["level_downsample"])
-            positive_rois_in_cell.append(relative_positive_bbox)
+            # relative_positive_bbox = absolute_bbox_to_relative(positive_bbox, cell_metadata["cell_bbox_level_0"])
+            # relative_positive_bbox = downscale_bbox(relative_positive_bbox, cell_metadata["level_downsample"])
+            relative_positive_points = absolute_points_to_relative(positive_points, cell_metadata["cell_bbox_level_0"])
+            relative_positive_points = downscale_points(relative_positive_points, cell_metadata["level_downsample"])
+
+            positive_rois_indexes_in_cell.append(i)
             if display:
-                cv2.rectangle(display_copy, (relative_positive_bbox[0], relative_positive_bbox[1]),
-                              (relative_positive_bbox[0] + relative_positive_bbox[2], relative_positive_bbox[1] + relative_positive_bbox[3]), (0, 0, 255), outline_width)
+                cv2.polylines(display_copy, [np.array(relative_positive_points)], isClosed=True, color=(0, 255, 0), thickness=2)
+                # cv2.rectangle(display_copy, (relative_positive_bbox[0], relative_positive_bbox[1]),
+                #               (relative_positive_bbox[0] + relative_positive_bbox[2], relative_positive_bbox[1] + relative_positive_bbox[3]), (0, 0, 255), outline_width)
 
     filtered_matches = template_match(cell, match_size=ds_candidate_size, match_threshold=0.4, overlap_threshold=0.25)
 
     positive_rois_caught = set()
     for candidate_bbox in filtered_matches:
-        if display:
-            cv2.rectangle(display_copy, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]), (0, 255, 0), outline_width)
         is_positive = False
+        abs_candidate_bbox = relative_bbox_to_absolute(upscale_bbox(candidate_bbox, cell_metadata["level_downsample"]), cell_metadata["cell_bbox_level_0"])
 
-        for positive_bbox in positive_rois_in_cell:
+        for i in positive_rois_indexes_in_cell:
             # print(f"{positive_bbox}, {abs_candidate_bbox}")
-            if is_bbox_1_center_in_bbox_2(positive_bbox, candidate_bbox):
-                positive_rois_caught.add(positive_bbox)
+            positive_points, positive_bbox = positive_rois[i]
+            if get_polygon_bbox_intersection(positive_points, abs_candidate_bbox) >= 0.35:
+                positive_rois_caught.add(i)
                 is_positive = True
                 break
-        abs_candidate_bbox = relative_bbox_to_absolute(upscale_bbox(candidate_bbox,cell_metadata["level_downsample"]), cell_metadata["cell_bbox_level_0"])
 
+        if display:
+            cv2.rectangle(display_copy, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]),
+                          (0, 0, 255) if is_positive else (0, 255, 0), outline_width)
         # crop = cell[candidate_bbox[1]:candidate_bbox[1] + ds_candidate_size, candidate_bbox[0]:candidate_bbox[0] + ds_candidate_size]
         abs_x_min, abs_y_min, _, _ = abs_candidate_bbox
         crop = np.array(cell_metadata["slide"].read_region((abs_x_min, abs_y_min), 0, (candidate_size, candidate_size)))
@@ -149,11 +161,17 @@ def extract_candidates(cell, cell_metadata):
     # if len(positive_rois_caught) < len(positive_rois_in_cell):
     #     print(f"{cell_metadata['slide_filename']} {cell_metadata['cell_bbox_level_0']} {len(positive_rois_caught)} / {len(positive_rois_in_cell)}")
     if display:
-        cv2.namedWindow("image", cv2.WINDOW_KEEPRATIO | cv2.WINDOW_GUI_NORMAL)
-        cv2.setWindowProperty("image", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
-        cv2.imshow('image', display_copy)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        # Convert the RGBA image from OpenCV format to a format compatible with Matplotlib
+        # If the image has an alpha channel, strip it for proper display in Matplotlib
+        if display_copy.shape[2] == 4:  # Check if the image has 4 channels (RGBA)
+            display_rgb = cv2.cvtColor(display_copy, cv2.COLOR_BGRA2RGB)
+        else:  # Otherwise, directly convert from BGR to RGB
+            display_rgb = cv2.cvtColor(display_copy, cv2.COLOR_BGR2RGB)
+        plt.figure(figsize=(10, 6))  # Adjust figure size as needed
+        plt.imshow(display_rgb)
+        plt.axis('off')  # Turn off the axis if not needed
+        plt.title("Image")  # Add a title if desired
+        plt.show()
 
 
 def template_match(image, ds_factor=2, match_threshold=0.5, match_size=256, overlap_threshold=0.2, templates_dir='data/templates/gastric-glands/1/all/', filter=None):
@@ -208,7 +226,8 @@ def main():
         level=1,
         filter=lambda cell, x, y, slide_filename: is_not_mostly_blank(cell, non_blank_percentage=0.35),
         # callback=lambda cell, cell_meta_data: save_cell(cell, cell_meta_data, "output/tiles"),
-        callback=extract_candidates
+        callback=extract_candidates,
+
     )
 
 

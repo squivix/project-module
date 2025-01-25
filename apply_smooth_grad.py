@@ -11,7 +11,6 @@ from datasets.LabeledImageDataset import default_image_transform
 def smoothgrad_threshold_contours(model, input_image, target_class, device):
     model.to(device)
     input_image = input_image.to(device)
-
     input_image.requires_grad = True
 
     saliency = Saliency(model)
@@ -30,20 +29,16 @@ def smoothgrad_threshold_contours(model, input_image, target_class, device):
     # Apply the mask to the input image (assume input is normalized)
     input_image_np = input_image.cpu().detach().numpy()[0].transpose(1, 2, 0)
     input_image_np = (input_image_np - input_image_np.min()) / (input_image_np.max() - input_image_np.min())  # Normalize to [0, 1]
-    masked_image = input_image_np * mask[..., np.newaxis]
-
+    # masked_image = input_image_np * mask[..., np.newaxis]
     # Dilate the gradient mask to connect components
     dilated_mask = cv2.dilate(mask.astype(np.uint8), kernel=np.ones((5, 5), np.uint8), iterations=1)
 
-    # Find contours of the dilated mask
     contours, _ = cv2.findContours(dilated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Draw contours on the original image
     output_image = (input_image_np * 255).astype(np.uint8)
     output_image = cv2.cvtColor(output_image, cv2.COLOR_RGB2BGR)
     cv2.drawContours(output_image, contours, -1, (0, 255, 0), 2)  # Green contours
 
-    # Display images
     plt.figure(figsize=(10, 10))
     plt.subplot(1, 3, 1)
     plt.title("Original Image")
@@ -65,12 +60,12 @@ def smoothgrad_threshold_contours(model, input_image, target_class, device):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
-# Load a pre-trained model
+
 model = torch.load("model.pickle").to(device)
 model.eval()
 
 # Load and preprocess the image
-img_path = 'data\candidates\positive/522934_65132_26460_256_256.png'
+img_path = 'data/candidates/positive/522934_65132_26460_256_256.png'
 
 original_image = read_image(img_path, mode=ImageReadMode.RGB)
 original_image = original_image.float() / 255.0
