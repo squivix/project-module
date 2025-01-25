@@ -13,8 +13,8 @@ class InceptionV3Model(nn.Module):
         self.pretrained_model.fc = nn.Identity()
         for param in self.pretrained_model.parameters():
             param.requires_grad = False
-
-        self.model = MLPBinaryClassifier(in_features=2048,
+        self.pretrained_output_size = 2048
+        self.model = MLPBinaryClassifier(in_features=self.pretrained_output_size,
                                          hidden_layers=hidden_layers,
                                          units_per_layer=units_per_layer,
                                          dropout=dropout)

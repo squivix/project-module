@@ -13,6 +13,7 @@ class VggModel(nn.Module):
         for param in self.pretrained_model.parameters():
             param.requires_grad = False
 
+        self.pretrained_output_size = 25088
         self.model = MLPBinaryClassifier(in_features=25088, hidden_layers=hidden_layers, units_per_layer=units_per_layer, dropout=dropout)
 
     def forward(self, x):

@@ -8,3 +8,4 @@ libs
 .directory
 checkpoints
 .ipynb_checkpoints
+temp.py

@@ -61,9 +61,10 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from datasets.LabeledImageDataset import LabeledImageDataset
-from models.resnet import Resnet18Model
+from models.resnet import Resnet18Model, Resnet50Model
 from utils import reduce_dataset
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -81,14 +82,13 @@ model.to(device)
 output_csv_path = f"output/{model.__class__.__name__}_features.csv"
 # Open the CSV file and write header (if needed)
 with open(output_csv_path, mode='w') as f:
-    # Assuming logits have a fixed dimensionality, e.g., 512
-    header = ','.join([f'feature_{i}' for i in range(512)] + ["label", "file_path"])
+    header = ','.join([f'feature_{i}' for i in range(model.pretrained_output_size)] + ["label", "file_path"])
     f.write(header + '\n')
 
 # Stream-writing each batch to the CSV file
 file_paths = np.array(dataset.dataset.file_paths)
 with torch.no_grad(), open(output_csv_path, mode='a') as f:
-    for batch_x, batch_y, idx in dataset_loader:
+    for batch_x, batch_y, idx in tqdm(dataset_loader):
         batch_x = batch_x.to(device)
         logits = model.pretrained_model.forward(batch_x)
 

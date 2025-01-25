@@ -83,10 +83,10 @@ def modify_annotations(xml_file, regions):
 
 
 def extract_negative_set():
-    df = pd.read_csv("data/mislabels/mislabeled-candidates.csv")
-    df['File Name'] = df['File Name'].apply(lambda x: f'{"_".join(x.split("_")[1:])}_256_256')
-    filtered_df = df[df['Classification (manual)'] == 'negative']
-    return set(filtered_df["File Name"])
+    df = pd.read_csv("data/mislabels/all-mislabels.csv")
+    df['file_name'] = df['file_name'].apply(lambda x: f'{"_".join(x.split("_")[1:])}_256_256')
+    filtered_df = df[df['classification'] == 'negative']
+    return set(filtered_df["file_name"])
 
 
 dataset, sorted_probs, sorted_indexes = extract_possible_mislabels()

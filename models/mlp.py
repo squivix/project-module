@@ -23,6 +23,7 @@ class MLPBinaryClassifier(nn.Module):
             nn.Linear(units_per_layer, 1),
             nn.Sigmoid()
         )
+        self.hidden_layers = hidden_layers
         self.threshold = threshold
         self.negative_weight = negative_weight
         self.positive_weight = positive_weight
@@ -30,6 +31,8 @@ class MLPBinaryClassifier(nn.Module):
         self.focal_gamma = focal_gamma
 
     def forward(self, x):
+        if self.hidden_layers == 0:
+            return x
         return self.model(x)
 
     def loss_function(self, output, target):
