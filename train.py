@@ -10,13 +10,14 @@ import torch
 from sklearn.model_selection import StratifiedKFold
 from torch.optim import Adam
 from torch.utils.data import DataLoader, Subset
+from torchmetrics.classification import BinaryCalibrationError
 from tqdm import tqdm
 
 from models.mlp import MLPBinaryClassifier, weight_reset
 from utils import calc_binary_classification_metrics, undersample_dataset
 
 
-def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32,
+def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32,undersample=True,
                       hidden_layer_combs=None,
                       unit_combs=None,
                       dropout_combs=None,
@@ -61,7 +62,7 @@ def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k
             if not param_key in param_to_metrics:
                 eval_metrics = kfold_train_eval(model_builder, dataset,
                                                 batch_size=batch_size, device=device, k=k, max_epochs=max_epochs,
-                                                learning_rate=learning_rate, weight_decay=weight_decay, )
+                                                learning_rate=learning_rate, weight_decay=weight_decay, undersample=undersample)
                 param_to_metrics[param_key] = eval_metrics
             else:
                 eval_metrics = param_to_metrics[param_key]
@@ -82,7 +83,7 @@ def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k
 
 
 def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_decay=0.0, max_epochs=20,
-                     batch_size=32):
+                     batch_size=32, undersample=True):
     metrics = ["loss", "accuracy", "precision", "recall", "f1", "mcc"]
     test_metrics = {m: [] for m in metrics}
     kfold = StratifiedKFold(n_splits=k, shuffle=True)
@@ -90,7 +91,9 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
     for fold, (train_ids, test_ids) in enumerate(kfold.split(dataset, dataset.labels)):
         train_dataset = Subset(dataset, train_ids)
         train_dataset.labels = np.array(dataset.labels)[train_ids]
-        train_loader = DataLoader(undersample_dataset(train_dataset), batch_size=batch_size, shuffle=True)
+        if undersample:
+            train_dataset = undersample_dataset(train_dataset)
+        train_loader = DataLoader(train_dataset, batch_size = batch_size, shuffle = True)
         test_loader = DataLoader(Subset(dataset, test_ids), batch_size=batch_size, shuffle=True)
 
         model.apply(weight_reset)
@@ -138,12 +141,13 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
                      max_epochs=1000,
                      checkpoint_every=None, eval_every=1):
     optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    metrics = ["loss", "accuracy", "precision", "recall", "f1", "mcc"]
+    metrics = ["loss", "accuracy", "precision", "recall", "f1", "mcc", "ece"]
     train_metrics = {m: [] for m in [*metrics, "epoch"]}
     test_metrics = {m: [] for m in [*metrics, "epoch"]}
 
     training_start_time = int(time.time() * 1000)
     checkpoint_dir = f"checkpoints/{model.__class__.__name__}/{training_start_time}"
+    ece = BinaryCalibrationError(norm='l1')
 
     if checkpoint_every is not None:
         os.makedirs(checkpoint_dir, exist_ok=True)
@@ -173,6 +177,8 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
             batch_train_metrics["recall"][i] = recall
             batch_train_metrics["f1"][i] = f1
             batch_train_metrics["mcc"][i] = mcc
+            batch_train_metrics["ece"][i] = ece(preds.squeeze(), batch_y.squeeze()).item()
+
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
@@ -204,6 +210,8 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
                     batch_test_metrics["recall"][i] = test_recall
                     batch_test_metrics["f1"][i] = test_f1
                     batch_test_metrics["mcc"][i] = test_mcc
+                    batch_test_metrics["ece"][i] = ece(test_preds.squeeze(), y_test.squeeze()).item()
+
                 for m in metrics:
                     test_metrics[m].append(batch_test_metrics[m].mean())
                 test_metrics["epoch"].append(epoch)

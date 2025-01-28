@@ -1,5 +1,7 @@
+import json
 import os
 import shutil
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pandas as pd
@@ -8,8 +10,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from datasets.LabeledImageDataset import LabeledImageDataset
-from utils import reduce_dataset
-import xml.etree.ElementTree as ET
+from utils import reduce_dataset, get_polygon_bbox_intersection
 
 
 def extract_possible_mislabels():
@@ -89,6 +90,17 @@ def extract_negative_set():
     return set(filtered_df["file_name"])
 
 
+def extract_raw_annotation_points():
+    annotations_dir = "data/annotations/json"
+    slide_name_to_annotations = {}
+    for annotations_file_name in os.listdir(annotations_dir):
+        with open(f"{annotations_dir}/{annotations_file_name}") as f:
+            annotations = json.load(f)
+            slide_filename = Path(annotations_file_name).stem
+            slide_name_to_annotations[slide_filename] = annotations
+    return slide_name_to_annotations
+
+
 dataset, sorted_probs, sorted_indexes = extract_possible_mislabels()
 candidate_output_dir = 'output/mislabel-candidates/'
 
@@ -97,23 +109,29 @@ if os.path.exists(candidate_output_dir):
     shutil.rmtree(candidate_output_dir)
 os.makedirs(f"{candidate_output_dir}/images", exist_ok=True)
 os.makedirs(f"{candidate_output_dir}/annotations", exist_ok=True)
-threshold = 0.75
-slide_name_to_bboxes = {}
+confidence_threshold = 0.5
+intersection_with_pos_threshold = 0.3
+slide_name_to_positive_annotations = extract_raw_annotation_points()
+slide_name_to_new_bboxes = {}
 for i in range(len(sorted_indexes)):
     dataset_index = sorted_indexes[i]
     prob = sorted_probs[i]
     src_file_path = dataset.dataset.file_paths[dataset_index]
     path_obj = Path(src_file_path)
-    if prob >= threshold and "negative" in src_file_path and path_obj.stem not in negative_set:
+    slide_filename, x_min, y_min, width, height = path_obj.stem.split("_")
+    candidate_bbox = (int(x_min), int(y_min), int(width), int(height))
+    annotation_points = [a["points"] for a in slide_name_to_positive_annotations[slide_filename]]
+    was_already_positive=any([get_polygon_bbox_intersection(p, candidate_bbox)>intersection_with_pos_threshold for p in annotation_points])
+    if prob >= confidence_threshold and "negative" in src_file_path and not was_already_positive and path_obj.stem not in negative_set:
         new_file_name = f"{f'{prob:.8f}'[2:]}_{path_obj.stem}{path_obj.suffix}"
         print(new_file_name)
         shutil.copy(src_file_path, f"{candidate_output_dir}/images/{new_file_name}")
-        slide_filename, x_min, y_min, width, height = path_obj.stem.split("_")
-        if not slide_filename in slide_name_to_bboxes:
-            slide_name_to_bboxes[slide_filename] = []
-        slide_name_to_bboxes[slide_filename].append((int(x_min), int(y_min), int(width), int(height)))
 
-for slide_filename, bboxes in slide_name_to_bboxes.items():
+        if not slide_filename in slide_name_to_new_bboxes:
+            slide_name_to_new_bboxes[slide_filename] = []
+        slide_name_to_new_bboxes[slide_filename].append(candidate_bbox)
+
+for slide_filename, bboxes in slide_name_to_new_bboxes.items():
     modified_xml = modify_annotations(f"data/whole-slides/gut/{slide_filename}.xml", bboxes)
     with open(f"{candidate_output_dir}/annotations/{slide_filename}.xml", "w") as file:
         file.write(modified_xml)

@@ -1,15 +1,16 @@
 import math
 import os
+import os.path
 import shutil
 from collections import defaultdict
 from pathlib import Path
 
 import cv2
 import numpy as np
+import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from shapely import Polygon, box
-from shapely.validation import explain_validity
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.transforms import v2
@@ -431,3 +432,18 @@ def get_polygon_bbox_intersection(points, bbox):
     if shape1_area == 0:
         return 0
     return intersection_area / shape1_area
+
+def sync_data_mislabels():
+
+    file_path = 'data/mislabels/all-mislabels.csv'
+    df = pd.read_csv(file_path)
+    alt_map = {"positive": "negative", "negative": "positive"}
+    for index, row in df.iterrows():
+        file_name = f'{"_".join(row["file_name"].split('_')[1:])}_256_256.png'
+        file_path = f"data/candidates/{row['classification']}/{file_name}"
+        if not os.path.exists(file_path):
+            alt_file_path = f"data/candidates/{alt_map[row['classification']]}/{file_name}"
+            src_path = alt_file_path
+            dst_path = Path(file_path).parent
+            print(f"{src_path} -> {dst_path}")
+            # shutil.move(src_path,dst_path)

@@ -76,7 +76,7 @@ dataset = reduce_dataset(original_dataset, discard_ratio=0.0)
 
 dataset_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
-model = Resnet18Model(hidden_layers=0, units_per_layer=128)
+model = Resnet50Model(hidden_layers=0, units_per_layer=128)
 model.to(device)
 
 output_csv_path = f"output/{model.__class__.__name__}_features.csv"
