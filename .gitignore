@@ -8,4 +8,3 @@ libs
 .directory
 checkpoints
 .ipynb_checkpoints
-recreate-annotations.py
