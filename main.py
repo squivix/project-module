@@ -1,41 +1,49 @@
+import json
+import os
+from pathlib import Path
 
-from datetime import datetime
+import pandas as pd
 
-import torch
-from torch.utils.data import DataLoader
+annotations_dir = "data/annotations/json"
+slide_df = {"file_name": [], "n_annotations": []}
 
-from datasets.CSVDataset import CSVDataset
-from models.mlp import MLPBinaryClassifier
-from train import train_classifier
-from utils import plot_model_metrics
-from utils import reduce_dataset, split_dataset, undersample_dataset
+for annotations_file_name in os.listdir(annotations_dir):
+    with open(f"{annotations_dir}/{annotations_file_name}") as f:
+        annotations = json.load(f)
+        slide_filename = Path(annotations_file_name).stem
+        slide_df["file_name"].append(slide_filename)
+        slide_df["n_annotations"].append(len(annotations))
+slides_df = pd.DataFrame(slide_df)
 
-device = torch.device('cuda:0' if  torch.cuda.is_available() else 'cpu')
-print(f"Device: {device}")
+q1 = slides_df['n_annotations'].quantile(0.25)
+median = slides_df['n_annotations'].median()
+q3 = slides_df['n_annotations'].quantile(0.75)
 
-batch_size = 256
-dataset = CSVDataset("data/features/Resnet18Model_features.csv")
-dataset = reduce_dataset(dataset, discard_ratio=0.0)
-train_dataset, test_dataset = split_dataset(dataset, train_ratio=0.7)
-train_dataset = undersample_dataset(train_dataset)
 
-train_loader = DataLoader(train_dataset,
-                          batch_size=batch_size,
-                          shuffle=True)
-test_loader = DataLoader(test_dataset,
-                         batch_size=batch_size,
-                         shuffle=True, )
+# Define new categories based on quartiles
+def categorize_quartiles(positive_regions):
+    if positive_regions <= q1:
+        return "Low"
+    elif q1 < positive_regions <= median:
+        return "Medium"
+    elif median < positive_regions <= q3:
+        return "High"
+    else:
+        return "Very High"
 
-model = MLPBinaryClassifier(in_features=512, hidden_layers=1, units_per_layer=2048,
-                            dropout=0.2, focal_alpha=0.04, focal_gamma=0.2)
 
-print(f"Dataset: {len(train_dataset):,} training, {len(test_dataset):,} testing")
+slides_df['category'] = slides_df['n_annotations'].apply(categorize_quartiles)
+print(len(slides_df))
+train_set_quartiles = pd.DataFrame()
+test_set_quartiles = pd.DataFrame()
 
-model = model.to(device)
-model, model_metrics = train_classifier(model, train_loader, test_loader, device,
-                                        start_learning_rate=0.00001,
-                                        min_learning_rate=0.000001,
-                                        lr_warmup_steps=25,
-                                        max_epochs=100,
-                                        checkpoint_every=1,
-                                        eval_every=1)
+for category in slides_df['category'].unique():
+    category_slides = slides_df[slides_df['category'] == category]
+    train = category_slides.sample(frac=0.7, random_state=42)
+    test = category_slides.drop(train.index)
+    train_set_quartiles = pd.concat([train_set_quartiles, train])
+    test_set_quartiles = pd.concat([test_set_quartiles, test])
+
+print(train_set_quartiles)
+print()
+print(test_set_quartiles)
