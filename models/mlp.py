@@ -51,10 +51,10 @@ class MLPBinaryClassifier(nn.Module):
 
         bce_loss = F.binary_cross_entropy(output, target, reduction='none')
 
-        pt = torch.where(target == 1, output, 1 - output)
-        focal_weight = self.focal_alpha * (1 - pt) ** self.focal_gamma
-
-        focal_loss = focal_weight * bce_loss
+        pt = output * target + (1 - output) * (1 - target)
+        focal_weight =  (1 - pt) ** self.focal_gamma
+        alpha_t = self.focal_alpha * target + (1 - self.focal_alpha) * (1 - target)
+        focal_loss = alpha_t * focal_weight * bce_loss
         return focal_loss.mean()
 
     def predict(self, prob):

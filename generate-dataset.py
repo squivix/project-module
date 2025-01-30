@@ -27,7 +27,10 @@ else:
 def grid_segment_slides(slides_input_dir, callback=None, filter=None, cell_size=256, level=0):
     # if os.path.exists(root_output_dir):
     #     shutil.rmtree(root_output_dir)
-    only_positive = True
+    only_positive = False
+    only_negative = True
+    if only_positive and only_negative:
+        raise ValueError("only_positive and only_negative are mutually exclusive")
     for slide_filename in os.listdir(slides_input_dir):
         if Path(slide_filename).suffix != ".svs":
             continue
@@ -58,6 +61,8 @@ def grid_segment_slides(slides_input_dir, callback=None, filter=None, cell_size=
                         if is_bbox_1_center_in_bbox_2(positive_bbox, cell_bbox_level_0):
                             positive_rois_in_cell.append(positive_bbox)
                     if only_positive and len(positive_rois_in_cell) == 0:
+                        continue
+                    if only_negative and len(positive_rois_in_cell) != 0:
                         continue
 
                     cell = np.array(slide.read_region((x, y), level, (ds_cell_size, ds_cell_size)))
@@ -101,6 +106,12 @@ def save_cell(cell, cell_meta_data, root_output_dir, extension="png"):
     cv2.imwrite(cell_file_path, cell)
 
 
+def crop_bbox(image, bbox):
+    xmin, ymin, w, h = bbox
+    cropped_image = image[ymin:ymin + h, xmin:xmin + w]  # Crop using NumPy slicing
+    return cropped_image
+
+
 def extract_candidates(cell, cell_metadata):
     slide_filename = cell_metadata["slide_filename"]
     candidate_output_dir = f"output/candidates/"
@@ -108,7 +119,7 @@ def extract_candidates(cell, cell_metadata):
     ds_candidate_size = round(candidate_size / cell_metadata["level_downsample"])
     outline_width = 5
     extension = "png"
-    display = True
+    display = False
     display_copy = cell.copy()
 
     with open(f"data/whole-slides/gut/{slide_filename}.json") as f:
@@ -143,7 +154,8 @@ def extract_candidates(cell, cell_metadata):
                 positive_rois_caught.add(i)
                 is_positive = True
                 break
-
+        if not is_not_mostly_blank(crop_bbox(cell, candidate_bbox), non_blank_percentage=0.1):
+            continue
         if display:
             cv2.rectangle(display_copy, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]),
                           (0, 0, 255) if is_positive else (0, 255, 0), outline_width)
@@ -155,9 +167,8 @@ def extract_candidates(cell, cell_metadata):
         else:
             output_path = f"{candidate_output_dir}/negative/"
         os.makedirs(output_path, exist_ok=True)
-        if is_not_mostly_blank(crop, non_blank_percentage=0.1):
-            # output_path = f"{candidate_output_dir}/blank/"
-            cv2.imwrite(f"{output_path}/{slide_filename}_{abs_x_min}_{abs_y_min}_{candidate_size}_{candidate_size}.{extension}", crop)
+        # output_path = f"{candidate_output_dir}/blank/"
+        cv2.imwrite(f"{output_path}/{slide_filename}_{abs_x_min}_{abs_y_min}_{candidate_size}_{candidate_size}.{extension}", crop)
     # if len(positive_rois_caught) < len(positive_rois_in_cell):
     #     print(f"{cell_metadata['slide_filename']} {cell_metadata['cell_bbox_level_0']} {len(positive_rois_caught)} / {len(positive_rois_in_cell)}")
     if display:

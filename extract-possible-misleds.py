@@ -15,7 +15,7 @@ from utils import reduce_dataset, get_polygon_bbox_intersection
 
 def extract_possible_mislabels():
     model = torch.load("model.pickle")
-    dataset = LabeledImageDataset("data/candidates", with_index=True)
+    dataset = LabeledImageDataset("output/candidates", with_index=True)
     dataset = reduce_dataset(dataset, discard_ratio=0.0)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     batch_size = 256

@@ -103,18 +103,18 @@ def adjust_and_split_crop(annotation, slide, cell_size=256, display=False):
 
 
 annotations_dir = "data/annotations/json"
-slide_name_to_annotations = {}
+slide_df = {}
 for annotations_file_name in os.listdir(annotations_dir):
     with open(f"{annotations_dir}/{annotations_file_name}") as f:
         annotations = json.load(f)
         slide_filename = Path(annotations_file_name).stem
-        slide_name_to_annotations[slide_filename] = annotations
+        slide_df[slide_filename] = annotations
 slides_dir = "data/whole-slides/gut"
 output_dir = "output/direct-positives"
 os.makedirs(output_dir, exist_ok=True)
 ws = []
 hs = []
-for slide_filename, annotations in slide_name_to_annotations.items():
+for slide_filename, annotations in slide_df.items():
     slide = openslide.OpenSlide(f"{slides_dir}/{slide_filename}.svs")
     for i, annotation in enumerate(annotations):
         bbox = annotation["x_min"], annotation["y_min"], annotation["width"], annotation["height"]

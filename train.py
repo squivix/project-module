@@ -14,10 +14,11 @@ from torchmetrics.classification import BinaryCalibrationError
 from tqdm import tqdm
 
 from models.mlp import MLPBinaryClassifier, weight_reset
+from schedulers.CosineLRScheduler import CosineLRScheduler
 from utils import calc_binary_classification_metrics, undersample_dataset
 
 
-def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32,undersample=True,
+def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32, undersample=True,
                       hidden_layer_combs=None,
                       unit_combs=None,
                       dropout_combs=None,
@@ -93,7 +94,7 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
         train_dataset.labels = np.array(dataset.labels)[train_ids]
         if undersample:
             train_dataset = undersample_dataset(train_dataset)
-        train_loader = DataLoader(train_dataset, batch_size = batch_size, shuffle = True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
         test_loader = DataLoader(Subset(dataset, test_ids), batch_size=batch_size, shuffle=True)
 
         model.apply(weight_reset)
@@ -137,10 +138,13 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
     return {**{f"test_{m}": numpy.mean(test_metrics[m]) for m in metrics}, }
 
 
-def train_classifier(model, train_loader, test_loader, device, learning_rate=0.001, weight_decay=0,
+def train_classifier(model, train_loader, test_loader, device, start_learning_rate=0.001, weight_decay=0,
                      max_epochs=1000,
+                     min_learning_rate=None,
+                     lr_end_steady_steps=10,
+                     lr_warmup_steps=10,
                      checkpoint_every=None, eval_every=1):
-    optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    optimizer = Adam(model.parameters(), lr=start_learning_rate, weight_decay=weight_decay)
     metrics = ["loss", "accuracy", "precision", "recall", "f1", "mcc", "ece"]
     train_metrics = {m: [] for m in [*metrics, "epoch"]}
     test_metrics = {m: [] for m in [*metrics, "epoch"]}
@@ -148,6 +152,9 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
     training_start_time = int(time.time() * 1000)
     checkpoint_dir = f"checkpoints/{model.__class__.__name__}/{training_start_time}"
     ece = BinaryCalibrationError(norm='l1')
+    if min_learning_rate is None:
+        min_learning_rate = start_learning_rate
+    lr_scheduler = CosineLRScheduler(optimizer, max_lr=start_learning_rate, min_lr=min_learning_rate, n_warmup=lr_warmup_steps, m_end=lr_end_steady_steps, max_epochs=max_epochs)
 
     if checkpoint_every is not None:
         os.makedirs(checkpoint_dir, exist_ok=True)
@@ -186,8 +193,9 @@ def train_classifier(model, train_loader, test_loader, device, learning_rate=0.0
         for m in metrics:
             train_metrics[m].append(batch_train_metrics[m].mean())
         train_metrics["epoch"].append(epoch)
+        lr_scheduler.step()
 
-        print(f"Train: {epoch + 1:,}/{max_epochs:,}: loss:{train_metrics["loss"][-1]}")
+        print(f"Train: {epoch + 1:,}/{max_epochs:,}: lr: {lr_scheduler.get_last_lr()[-1]:.12f} loss:{train_metrics["loss"][-1]}")
         if eval_every is not None and epoch % eval_every == 0:
             model.eval()
             with torch.no_grad():
