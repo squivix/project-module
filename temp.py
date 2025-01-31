@@ -1,50 +1,35 @@
-# import json
-# import os
-# from pathlib import Path
-#
-# import pandas as pd
-#
-# annotations_dir = "data/annotations/json"
-# slide_df = {"file_name": [], "n_annotations": []}
-#
-# for annotations_file_name in os.listdir(annotations_dir):
-#     with open(f"{annotations_dir}/{annotations_file_name}") as f:
-#         annotations = json.load(f)
-#         slide_filename = Path(annotations_file_name).stem
-#         slide_df["file_name"].append(slide_filename)
-#         slide_df["n_annotations"].append(len(annotations))
-# slides_df = pd.DataFrame(slide_df)
-#
-# q1 = slides_df['n_annotations'].quantile(0.25)
-# median = slides_df['n_annotations'].median()
-# q3 = slides_df['n_annotations'].quantile(0.75)
-#
-#
-# # Define new categories based on quartiles
-# def categorize_quartiles(positive_regions):
-#     if positive_regions <= q1:
-#         return "Low"
-#     elif q1 < positive_regions <= median:
-#         return "Medium"
-#     elif median < positive_regions <= q3:
-#         return "High"
-#     else:
-#         return "Very High"
-#
-#
-# slides_df['category'] = slides_df['n_annotations'].apply(categorize_quartiles)
-# print(len(slides_df))
-# train_set_quartiles = pd.DataFrame()
-# test_set_quartiles = pd.DataFrame()
-#
-# for category in slides_df['category'].unique():
-#     category_slides = slides_df[slides_df['category'] == category]
-#     train = category_slides.sample(frac=0.7, random_state=42)
-#     test = category_slides.drop(train.index)
-#     train_set_quartiles = pd.concat([train_set_quartiles, train])
-#     test_set_quartiles = pd.concat([test_set_quartiles, test])
-#
-# print(train_set_quartiles)
-# print()
-# print(test_set_quartiles)
-#
+import json
+from pathlib import Path
+
+import numpy as np
+
+from candidate_extractors.TemplateMatchExtractor import TemplateMatchExtractor
+from datasets.SlidesDataset import SlideDataset
+from utils import get_polygon_bbox_intersection
+
+extractor = TemplateMatchExtractor(verbose=True, display=False, match_threshold=0.5)
+dataset = SlideDataset("data/whole-slides/gut/", extractor)
+overall_positives_caught = 0
+overall_positives = 0
+for slide in dataset.slide_candidates.keys():
+    positive_candidates = [c["candidate_bbox"] for c in dataset.slide_candidates[slide] if c["is_positive"]]
+    slide = Path(slide).stem
+    with open(f"data/annotations/json/{slide}.json") as f:
+        positive_annotations = json.load(f)
+    positives_caught = 0
+    for positive_annotation in positive_annotations:
+        caught = False
+        for positive_candidate_bbox in positive_candidates:
+            if get_polygon_bbox_intersection(positive_annotation, positive_candidate_bbox) > 0.0:
+                caught = True
+                break
+        if caught:
+            positives_caught += 1
+    overall_positives_caught += positives_caught
+    overall_positives += len(positive_annotations)
+    print(f"{slide}: {positives_caught} caught out of {len(positive_annotations)}")
+print()
+print(f"Overall: {overall_positives_caught} caught out of {overall_positives} or {overall_positives_caught / overall_positives:.4%}")
+labels=np.array(dataset.labels)
+print(f"Positives: {labels.sum()}, Negatives: {labels.shape[0]}")
+

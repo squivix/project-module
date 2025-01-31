@@ -1,15 +1,17 @@
 import json
 import math
 import os
+import shutil
 from pathlib import Path
 
 import cv2
 import matplotlib
 import numpy as np
+from imutils.object_detection import non_max_suppression
 from tqdm import tqdm
 
-from utils import is_not_mostly_blank, downscale_bbox, calculate_bbox_overlap, crop_cv_image, absolute_points_to_relative, downscale_points, relative_bbox_to_absolute, \
-    get_polygon_bbox_intersection, crop_bbox, mean_blur_image, upscale_bbox, show_cv2_image, show_cv2_images
+from utils import is_not_mostly_blank, downscale_bbox, absolute_points_to_relative, downscale_points, relative_bbox_to_absolute, \
+    get_polygon_bbox_intersection, mean_blur_image, upscale_bbox, show_cv2_image, rotate_image, crop_cv_image
 
 matplotlib.use('qtagg')
 
@@ -23,18 +25,26 @@ else:
 
 
 class TemplateMatchExtractor:
-    def __init__(self, level=1, candidate_size=256, match_threshold=0.4, cell_size=4096, candidate_overlap_threshold=0.4, display=True, outline_thickness=2):
+    def __init__(self, level=2, candidate_size=256, match_threshold=0.5, cell_size=4096, candidate_overlap_threshold=0.4, output_dir=None, extension="jpg", verbose=False, display=False):
         self.cell_size = cell_size
         self.level = level
         self.candidate_size = candidate_size
         self.match_threshold = match_threshold
         self.display = display
-        self.outline_thickness = outline_thickness
+        self.verbose = verbose
+        self.outline_thickness = 2 if level == 1 or level == 0 else 1
         self.candidate_overlap_threshold = candidate_overlap_threshold
         self.templates_dir = f'data/templates/{self.level}'
+        self.extension = extension
+        self.output_dir = output_dir
+        if output_dir is not None:
+            shutil.rmtree(output_dir, ignore_errors=True)
+            os.makedirs(self.output_dir, exist_ok=True)
 
     def extract_candidates(self, slide_filepath):
         slide_filename = Path(slide_filepath).stem
+        if self.verbose:
+            print(f"Extracting candidates from {slide_filename}")
         with open(f"data/annotations/json/{slide_filename}.json") as f:
             positive_rois = json.load(f)
         slide = openslide.OpenSlide(slide_filepath)
@@ -44,59 +54,70 @@ class TemplateMatchExtractor:
         cells_count_x = math.floor(full_slide_width / self.cell_size)
         cells_count_y = math.floor(full_slide_height / self.cell_size)
         candidates = []
-        with tqdm(total=cells_count_x * cells_count_y, desc="Progress") as pbar:
-            for j, y in enumerate(range(0, full_slide_height, self.cell_size)):
-                for i, x in enumerate(range(0, full_slide_width, self.cell_size)):
+        if self.verbose:
+            pbar = tqdm(total=cells_count_x * cells_count_y, desc="Progress")
+
+        for j, y in enumerate(range(0, full_slide_height, self.cell_size)):
+            for i, x in enumerate(range(0, full_slide_width, self.cell_size)):
+                if self.verbose:
                     pbar.update(1)
-                    cell_bbox_level_0 = (x, y, self.cell_size, self.cell_size)
-                    cell = np.array(slide.read_region((x, y), self.level, (ds_cell_size, ds_cell_size)))
+                cell_bbox_level_0 = (x, y, self.cell_size, self.cell_size)
+                cell = np.array(slide.read_region((x, y), self.level, (ds_cell_size, ds_cell_size)))
 
-                    if is_not_mostly_blank(cell, non_blank_percentage=0.35):
-                        ds_candidate_size = round(self.candidate_size / level_downsample)
-
+                if is_not_mostly_blank(cell, non_blank_percentage=0.1):
+                    ds_candidate_size = round(self.candidate_size / level_downsample)
+                    if self.display:
                         display_copy = cell.copy()
 
-                        positive_rois_indexes_in_cell = []
-                        for i, positive_roi in enumerate(positive_rois):
-                            positive_points = positive_roi
-                            # TODO fix this mess: you've got the same issue one level higher: the big cells you grid from the whole slide could split a positive roi in half and only one will have the center
-                            if get_polygon_bbox_intersection(positive_points, cell_bbox_level_0) > 0.1:
-                                relative_positive_points = absolute_points_to_relative(positive_points, cell_bbox_level_0)
-                                relative_positive_points = downscale_points(relative_positive_points, level_downsample)
+                    positive_rois_indexes_in_cell = []
+                    for i, positive_roi in enumerate(positive_rois):
+                        positive_points = positive_roi
+                        # TODO fix this mess: you've got the same issue one level higher: the big cells you grid from the whole slide could split a positive roi in half and only one will have the center
+                        if get_polygon_bbox_intersection(positive_points, cell_bbox_level_0) > 0.1:
+                            relative_positive_points = absolute_points_to_relative(positive_points, cell_bbox_level_0)
+                            relative_positive_points = downscale_points(relative_positive_points, level_downsample)
 
-                                positive_rois_indexes_in_cell.append(i)
-                                if self.display:
-                                    cv2.polylines(display_copy, [np.array(relative_positive_points)], isClosed=True, color=(0, 255, 0), thickness=self.outline_thickness)
-
-                        filtered_matches = self.template_match(cell, match_size=ds_candidate_size)
-
-                        for candidate_bbox in filtered_matches:
-                            is_positive = False
-                            abs_candidate_bbox = relative_bbox_to_absolute(upscale_bbox(candidate_bbox, level_downsample), cell_bbox_level_0)
-
-                            for i in positive_rois_indexes_in_cell:
-                                positive_points = positive_rois[i]
-                                if get_polygon_bbox_intersection(positive_points, abs_candidate_bbox) >= 0.35:
-                                    is_positive = True
-                                    break
-                            if not is_not_mostly_blank(crop_bbox(cell, candidate_bbox), non_blank_percentage=0.1):
-                                continue
+                            positive_rois_indexes_in_cell.append(i)
                             if self.display:
-                                cv2.rectangle(display_copy, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]),
-                                              (0, 0, 255) if is_positive else (0, 255, 0), self.outline_thickness)
-                            abs_x_min, abs_y_min, _, _ = abs_candidate_bbox
-                            candidates.append({"slide_filepath": slide_filepath, "candidate_bbox": (abs_x_min, abs_y_min, self.candidate_size, self.candidate_size), "is_positive": is_positive})
-                            # crop = np.array(slide.read_region((abs_x_min, abs_y_min), 0, (candidate_size, candidate_size)))
+                                cv2.polylines(display_copy, [np.array(relative_positive_points)], isClosed=True, color=(0, 255, 0), thickness=self.outline_thickness)
+                    filtered_matches = self.template_match(cell, match_size=ds_candidate_size, filter=lambda crop: is_not_mostly_blank(crop, non_blank_percentage=0.1))
+                    for candidate_bbox in filtered_matches:
+                        is_positive = False
+                        abs_candidate_bbox = relative_bbox_to_absolute(upscale_bbox(candidate_bbox, level_downsample), cell_bbox_level_0)
+
+                        for i in positive_rois_indexes_in_cell:
+                            positive_points = positive_rois[i]
+                            if get_polygon_bbox_intersection(positive_points, abs_candidate_bbox) >= 0.35:
+                                is_positive = True
+                                break
 
                         if self.display:
-                            show_cv2_image(display_copy)
+                            cv2.rectangle(display_copy, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]),
+                                          (0, 0, 255) if is_positive else (0, 255, 0), self.outline_thickness)
+                        abs_x_min, abs_y_min, _, _ = abs_candidate_bbox
+                        candidates.append({"candidate_bbox": (abs_x_min, abs_y_min, self.candidate_size, self.candidate_size), "is_positive": is_positive})
+                        if self.output_dir is not None:
+                            crop = np.array(slide.read_region((abs_x_min, abs_y_min), 0, (self.candidate_size, self.candidate_size)))
+                            if is_positive:
+                                output_path = f"{self.output_dir}/positive/"
+                            else:
+                                output_path = f"{self.output_dir}/negative/"
+                            os.makedirs(output_path, exist_ok=True)
+                            cv2.imwrite(f"{output_path}/{slide_filename}_{abs_x_min}_{abs_y_min}_{self.candidate_size}_{self.candidate_size}.{self.extension}", crop)
+
+                    if self.display:
+                        show_cv2_image(display_copy)
+        if self.verbose:
+            pbar.close()
+        slide.close()
         return candidates
 
-    def template_match(self, image, match_size=256, filter=None):
-        image = mean_blur_image(image)
+    def template_match(self, image, match_size=256, filter=None, mean_blur_kernel_size=None):
+        image = mean_blur_image(image, mean_blur_kernel_size)
         image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        matches = []
+        match_points = []
+        match_scores = []
         for template_name in os.listdir(self.templates_dir):
             if Path(template_name).suffix.lower() not in [".png", ".jpg", ".jpeg"]:
                 continue
@@ -105,32 +126,25 @@ class TemplateMatchExtractor:
 
             if raw_template.shape[2] == 4:
                 template_mask = np.where(cv2.resize(raw_template[:, :, 3], (match_size, match_size)) > 0, 255, 0).astype(np.uint8)
-                template = mean_blur_image(cv2.resize(raw_template[:, :, :3], (match_size, match_size)))
+                template = mean_blur_image(cv2.resize(raw_template[:, :, :3], (match_size, match_size)), mean_blur_kernel_size)
             else:
                 template_mask = None
-                template = mean_blur_image(cv2.resize(raw_template, (match_size, match_size)))
+                template = mean_blur_image(cv2.resize(raw_template, (match_size, match_size)), mean_blur_kernel_size)
 
-            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            for angle in range(0, 360, 45):
+                rotated_template = rotate_image(template, angle)
 
-            result = cv2.matchTemplate(image_gray, template_gray, cv2.TM_CCOEFF_NORMED, mask=template_mask)
-            locations = np.where(result >= self.match_threshold)
-            for point, score in zip(zip(*locations[::-1]), result[locations]):
-                matches.append((point, score))
+                result = cv2.matchTemplate(image_gray, rotated_template, cv2.TM_CCOEFF_NORMED, mask=template_mask)
+                locations = np.where(result >= self.match_threshold)
+                for point, score in zip(zip(*locations[::-1]), result[locations]):
+                    match_points.append(point)
+                    match_scores.append(score)
 
-        matches = sorted(matches, key=lambda x: x[1], reverse=True)
-
+        match_bboxes = non_max_suppression(np.array([[x, y, x + match_size, y + match_size] for (x, y) in match_points]), probs=match_scores, overlapThresh=self.candidate_overlap_threshold)
         filtered_matches = []
-        for match in matches:
-            point, score = match
-            match_bbox = point[0].item(), point[1].item(), match_size, match_size
-
-            overlap = False
-            for existing_bbox in filtered_matches:
-                overlap_percentage = calculate_bbox_overlap(match_bbox, existing_bbox)
-                if overlap_percentage > self.candidate_overlap_threshold:
-                    overlap = True
-                    break
-
-            if not overlap and (filter is None or filter(crop_cv_image(image, match_bbox))):
-                filtered_matches.append(match_bbox)
+        for (x_min, y_min, _, _) in match_bboxes:
+            filtered_match = x_min, y_min, match_size, match_size
+            if filter is None or filter(crop_cv_image(image, filtered_match)):
+                filtered_matches.append(filtered_match)
         return filtered_matches

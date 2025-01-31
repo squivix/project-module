@@ -6,10 +6,10 @@ from collections import defaultdict
 from pathlib import Path
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from matplotlib import pyplot as plt
 from shapely import Polygon, box
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, Subset
@@ -349,9 +349,9 @@ def bbox_points_to_wh(bbox):
 
 def bbox_wh_to_points(bbox):
     x1, y1, w, h = bbox
-    x2 = w + x1
-    y2 = h + y1
-    return (x1, y1), (x2, y2)
+    x2 = x1 + w
+    y2 = y1 + h
+    return x1, y1, x2, y2
 
 
 def calculate_bbox_overlap(bbox1, bbox2):
@@ -407,6 +407,8 @@ def absolute_points_to_relative(target_points, reference_bbox):
 
 
 def mean_blur_image(image, kernel_size=5):
+    if kernel_size is None:
+        return image
     return cv2.GaussianBlur(image, (kernel_size, kernel_size), 0)
 
 
@@ -427,6 +429,7 @@ def get_polygon_bbox_intersection(points, bbox):
     intersection = shape1.intersection(bbox_shape)
 
     shape1_area = shape1.area
+
     intersection_area = intersection.area
 
     if shape1_area == 0:
@@ -449,17 +452,11 @@ def sync_data_mislabels():
             # shutil.move(src_path,dst_path)
 
 
-def is_not_mostly_blank(cell, non_blank_percentage=0.5, blank_threshold=235):
-    cell_gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
-    non_white_pixels = np.sum(cell_gray < blank_threshold)
-    pure_black_pixels = np.sum(cell_gray == 0)
-    return ((non_white_pixels - pure_black_pixels) / cell_gray.size) > non_blank_percentage
-
-
-def crop_bbox(image, bbox):
-    xmin, ymin, w, h = bbox
-    cropped_image = image[ymin:ymin + h, xmin:xmin + w]  # Crop using NumPy slicing
-    return cropped_image
+def is_not_mostly_blank(image, non_blank_percentage=0.5, blank_threshold=235):
+    image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    non_white_pixels = np.sum(image_gray < blank_threshold)
+    pure_black_pixels = np.sum(image_gray == 0)
+    return ((non_white_pixels - pure_black_pixels) / image_gray.size) > non_blank_percentage
 
 
 def show_cv2_image(image):
@@ -472,11 +469,6 @@ def show_cv2_image(image):
     plt.axis('off')
     plt.title("Image")
     plt.show()
-
-
-import cv2
-import numpy as np
-import matplotlib.pyplot as plt
 
 
 def show_cv2_images(images):
@@ -502,3 +494,10 @@ def show_cv2_images(images):
 
     plt.show()
 
+
+def rotate_image(image, angle):
+    """Rotate an image by a specific angle."""
+    (h, w) = image.shape[:2]
+    center = (w // 2, h // 2)
+    matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+    return cv2.warpAffine(image, matrix, (w, h))
