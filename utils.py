@@ -433,8 +433,8 @@ def get_polygon_bbox_intersection(points, bbox):
         return 0
     return intersection_area / shape1_area
 
-def sync_data_mislabels():
 
+def sync_data_mislabels():
     file_path = 'data/mislabels/all-mislabels.csv'
     df = pd.read_csv(file_path)
     alt_map = {"positive": "negative", "negative": "positive"}
@@ -447,3 +447,58 @@ def sync_data_mislabels():
             dst_path = Path(file_path).parent
             print(f"{src_path} -> {dst_path}")
             # shutil.move(src_path,dst_path)
+
+
+def is_not_mostly_blank(cell, non_blank_percentage=0.5, blank_threshold=235):
+    cell_gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
+    non_white_pixels = np.sum(cell_gray < blank_threshold)
+    pure_black_pixels = np.sum(cell_gray == 0)
+    return ((non_white_pixels - pure_black_pixels) / cell_gray.size) > non_blank_percentage
+
+
+def crop_bbox(image, bbox):
+    xmin, ymin, w, h = bbox
+    cropped_image = image[ymin:ymin + h, xmin:xmin + w]  # Crop using NumPy slicing
+    return cropped_image
+
+
+def show_cv2_image(image):
+    if image.shape[2] == 4:
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+    else:
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    plt.figure(figsize=(10, 6))
+    plt.imshow(image_rgb)
+    plt.axis('off')
+    plt.title("Image")
+    plt.show()
+
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def show_cv2_images(images):
+    max_h = max(img.shape[0] for img in images)
+    max_w = max(img.shape[1] for img in images)
+
+    fig, axes = plt.subplots(1, len(images), figsize=(5 * len(images), 5))
+
+    if len(images) == 1:
+        axes = [axes]
+
+    for ax, image in zip(axes, images):
+        if image.shape[2] == 4:
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+        else:
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        ax.imshow(image_rgb)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlim([0, max_w])
+        ax.set_ylim([max_h, 0])
+
+    plt.show()
+

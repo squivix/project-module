@@ -5,7 +5,7 @@ import torch
 from captum.attr import Saliency, NoiseTunnel
 from torchvision.io import ImageReadMode, read_image
 
-from datasets.LabeledImageDataset import default_image_transform
+from datasets.default_image_transform import default_image_transform
 
 
 def smoothgrad_threshold_contours(model, input_image, target_class, device):

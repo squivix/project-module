@@ -10,7 +10,7 @@ import numpy as np
 from tqdm import tqdm
 
 from utils import downscale_bbox, calculate_bbox_overlap, downscale_image, mean_blur_image, relative_bbox_to_absolute, is_bbox_1_center_in_bbox_2, crop_cv_image, \
-    upscale_bbox, downscale_points, absolute_points_to_relative, get_polygon_bbox_intersection
+    upscale_bbox, downscale_points, absolute_points_to_relative, get_polygon_bbox_intersection, crop_bbox
 
 matplotlib.use('qtagg')
 
@@ -104,12 +104,6 @@ def save_cell(cell, cell_meta_data, root_output_dir, extension="png"):
     os.makedirs(output_dir, exist_ok=True)
     cell_file_path = f"{output_dir}/{row},{column}_{x1}_{y1}.{extension}"
     cv2.imwrite(cell_file_path, cell)
-
-
-def crop_bbox(image, bbox):
-    xmin, ymin, w, h = bbox
-    cropped_image = image[ymin:ymin + h, xmin:xmin + w]  # Crop using NumPy slicing
-    return cropped_image
 
 
 def extract_candidates(cell, cell_metadata):
