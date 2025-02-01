@@ -2,6 +2,7 @@ import json
 import math
 import os
 import shutil
+from fileinput import filename
 from pathlib import Path
 
 import cv2
@@ -24,8 +25,40 @@ else:
     import openslide
 
 
+def generate_dataset_from_slides(slides_root_dir, extractor, output_dir, slide_filenames=None, separate_by_slide=True, extension="jpg"):
+    if slide_filenames is None:
+        slide_filenames = [file_name for file_name in os.listdir(slides_root_dir) if file_name.endswith(".svs")]
+    if os.path.exists(f"{output_dir}/dataset.json"):
+        with open(f"{output_dir}/dataset.json", "r") as f:
+            cache = json.load(f)
+            if cache == {**extractor.to_dict(), "slides": sorted(slide_filenames)}:
+                print(f"Found cached candidates dataset {output_dir}")
+                return
+    if os.path.exists(output_dir):
+        print(f"Deleting past dataset {output_dir}")
+        shutil.rmtree(output_dir, ignore_errors=True)
+    os.makedirs(output_dir, exist_ok=True)
+    print(f"Generating candidates dataset from {len(slide_filenames)} slides...")
+
+    def save_candidate(candidate, slide):
+        x_min, y_min, w, h = candidate["candidate_bbox"]
+        is_positive = candidate["is_positive"]
+        crop = np.array(slide.read_region((x_min, y_min), 0, (w, h)))
+
+        output_path = f"{output_dir}/{f'{Path(slide_filename).stem}/' if separate_by_slide else ''}/{'positive' if is_positive else 'negative'}/"
+        os.makedirs(output_path, exist_ok=True)
+        cv2.imwrite(f"{output_path}/{slide_filename}_{x_min}_{y_min}_{w}_{h}.{extension}", crop)
+
+    for slide_filename in slide_filenames:
+        slide_filepath = os.path.join(slides_root_dir, slide_filename)
+        extractor.extract_candidates(slide_filepath, callback=save_candidate)
+    with open(f"{output_dir}/dataset.json", "w") as f:
+        cache = {**extractor.to_dict(), "slides": sorted(slide_filenames)}
+        json.dump(cache, f)
+
+
 class TemplateMatchExtractor:
-    def __init__(self, level=2, candidate_size=256, match_threshold=0.5, cell_size=4096, candidate_overlap_threshold=0.4, output_dir=None, extension="jpg", verbose=False, display=False):
+    def __init__(self, level=2, candidate_size=256, match_threshold=0.5, cell_size=4096, candidate_overlap_threshold=0.4, verbose=True, display=False):
         self.cell_size = cell_size
         self.level = level
         self.candidate_size = candidate_size
@@ -35,16 +68,11 @@ class TemplateMatchExtractor:
         self.outline_thickness = 2 if level == 1 or level == 0 else 1
         self.candidate_overlap_threshold = candidate_overlap_threshold
         self.templates_dir = f'data/templates/{self.level}'
-        self.extension = extension
-        self.output_dir = output_dir
-        if output_dir is not None:
-            shutil.rmtree(output_dir, ignore_errors=True)
-            os.makedirs(self.output_dir, exist_ok=True)
 
-    def extract_candidates(self, slide_filepath):
+    def extract_candidates(self, slide_filepath, callback=None):
         slide_filename = Path(slide_filepath).stem
-        if self.verbose:
-            print(f"Extracting candidates from {slide_filename}")
+        # if self.verbose:
+        #     print(f"Extracting candidates from {slide_filename}")
         with open(f"data/annotations/json/{slide_filename}.json") as f:
             positive_rois = json.load(f)
         slide = openslide.OpenSlide(slide_filepath)
@@ -55,7 +83,7 @@ class TemplateMatchExtractor:
         cells_count_y = math.floor(full_slide_height / self.cell_size)
         candidates = []
         if self.verbose:
-            pbar = tqdm(total=cells_count_x * cells_count_y, desc="Progress")
+            pbar = tqdm(total=cells_count_x * cells_count_y, desc=f"Extracting candidates from slide {slide_filename}")
 
         for j, y in enumerate(range(0, full_slide_height, self.cell_size)):
             for i, x in enumerate(range(0, full_slide_width, self.cell_size)):
@@ -95,16 +123,10 @@ class TemplateMatchExtractor:
                             cv2.rectangle(display_copy, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]),
                                           (0, 0, 255) if is_positive else (0, 255, 0), self.outline_thickness)
                         abs_x_min, abs_y_min, _, _ = abs_candidate_bbox
-                        candidates.append({"candidate_bbox": (abs_x_min, abs_y_min, self.candidate_size, self.candidate_size), "is_positive": is_positive})
-                        if self.output_dir is not None:
-                            crop = np.array(slide.read_region((abs_x_min, abs_y_min), 0, (self.candidate_size, self.candidate_size)))
-                            if is_positive:
-                                output_path = f"{self.output_dir}/positive/"
-                            else:
-                                output_path = f"{self.output_dir}/negative/"
-                            os.makedirs(output_path, exist_ok=True)
-                            cv2.imwrite(f"{output_path}/{slide_filename}_{abs_x_min}_{abs_y_min}_{self.candidate_size}_{self.candidate_size}.{self.extension}", crop)
-
+                        candidate = {"candidate_bbox": (abs_x_min, abs_y_min, self.candidate_size, self.candidate_size), "is_positive": is_positive}
+                        candidates.append(candidate)
+                        if callback is not None:
+                            callback(candidate, slide)
                     if self.display:
                         show_cv2_image(display_copy)
         if self.verbose:
@@ -148,3 +170,13 @@ class TemplateMatchExtractor:
             if filter is None or filter(crop_cv_image(image, filtered_match)):
                 filtered_matches.append(filtered_match)
         return filtered_matches
+
+    def to_dict(self):
+        return {
+            "cell_size": self.cell_size,
+            "level": self.level,
+            "candidate_size": self.candidate_size,
+            "match_threshold": self.match_threshold,
+            "candidate_overlap_threshold": self.candidate_overlap_threshold,
+            "templates_dir": self.templates_dir,
+        }
