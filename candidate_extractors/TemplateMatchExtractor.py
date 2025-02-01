@@ -44,10 +44,10 @@ def generate_dataset_from_slides(slides_root_dir, extractor, output_dir, slide_f
         x_min, y_min, w, h = candidate["candidate_bbox"]
         is_positive = candidate["is_positive"]
         crop = np.array(slide.read_region((x_min, y_min), 0, (w, h)))
-
-        output_path = f"{output_dir}/{f'{Path(slide_filename).stem}/' if separate_by_slide else ''}/{'positive' if is_positive else 'negative'}/"
+        slide_name = Path(slide_filename).stem
+        output_path = f"{output_dir}/{f'{slide_name}/' if separate_by_slide else ''}/{'positive' if is_positive else 'negative'}/"
         os.makedirs(output_path, exist_ok=True)
-        cv2.imwrite(f"{output_path}/{slide_filename}_{x_min}_{y_min}_{w}_{h}.{extension}", crop)
+        cv2.imwrite(f"{output_path}/{slide_name}_{x_min}_{y_min}_{w}_{h}.{extension}", crop)
 
     for slide_filename in slide_filenames:
         slide_filepath = os.path.join(slides_root_dir, slide_filename)

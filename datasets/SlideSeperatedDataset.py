@@ -11,7 +11,8 @@ class SlideSeperatedDataset(Dataset):
     def __init__(self, root_dir, included_slides_names, transform=None, extension='.[jpg][png]*', with_index=False):
         self.slide_to_dataset = {}
         self.slides_length_df = {"slide": [], "dataset_length": []}
-        self.labels =[]
+        self.with_index = with_index
+        self.labels = []
         for slide in os.listdir(root_dir):
             slide_dir = os.path.join(root_dir, slide)
             if not os.path.isdir(slide_dir) or slide not in included_slides_names:
@@ -22,7 +23,6 @@ class SlideSeperatedDataset(Dataset):
             self.slides_length_df["dataset_length"].append(len(self.slide_to_dataset[slide]))
         self.slides_length_df = pd.DataFrame(self.slides_length_df)
         self.slides_length_df["dataset_length"] = self.slides_length_df["dataset_length"].astype(int)
-
 
     def __len__(self):
         return self.slides_length_df["dataset_length"].sum().item()
@@ -40,6 +40,15 @@ class SlideSeperatedDataset(Dataset):
         slide, sub_index = self._flat_index_to_slide_index(idx)
         return self.slide_to_dataset[slide].get_item_untransformed(sub_index)
 
+    def get_item_file_path(self, idx):
+        slide, sub_index = self._flat_index_to_slide_index(idx)
+        return self.slide_to_dataset[slide].file_paths[sub_index]
+
     def __getitem__(self, idx):
         slide, sub_index = self._flat_index_to_slide_index(idx)
-        return self.slide_to_dataset[slide][sub_index]
+
+        if self.with_index:
+            x, y, _ = self.slide_to_dataset[slide][sub_index]
+            return x, y, idx
+        else:
+            return self.slide_to_dataset[slide][sub_index]
