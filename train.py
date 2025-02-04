@@ -164,13 +164,13 @@ def train_classifier(model, train_loader, test_loader, device, start_learning_ra
         # with  open(f"{checkpoint_dir}/test_dataset.json", 'w') as temp_file:
         #     json.dump(test_loader.dataset.to_dict(), temp_file)
 
-    for epoch in range(max_epochs):
+    for epoch in range(1, max_epochs + 1):
         if checkpoint_every is not None and epoch % checkpoint_every == 0:
             torch.save(model, f"{checkpoint_dir}/{epoch}.pickle")
         batches = iter(train_loader)
 
         batch_train_metrics = {m: np.empty(len(batches)) for m in metrics}
-        for i, (batch_x, batch_y) in enumerate(tqdm(batches, desc=f"Epoch {epoch + 1:,} training")):
+        for i, (batch_x, batch_y) in enumerate(tqdm(batches, desc=f"Epoch {epoch:,} training")):
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
             logits = model.forward(batch_x)
@@ -195,14 +195,14 @@ def train_classifier(model, train_loader, test_loader, device, start_learning_ra
         train_metrics["epoch"].append(epoch)
         lr_scheduler.step()
 
-        print(f"Train: {epoch + 1:,}/{max_epochs:,}: lr: {lr_scheduler.get_last_lr()[-1]:.12f} loss:{train_metrics["loss"][-1]}")
+        print(f"Train: {epoch:,}/{max_epochs:,}: lr: {lr_scheduler.get_last_lr()[-1]:.12f} loss:{train_metrics["loss"][-1]}")
         if eval_every is not None and epoch % eval_every == 0:
             model.eval()
             with torch.no_grad():
                 test_batches = iter(test_loader)
 
                 batch_test_metrics = {m: np.empty(len(test_batches)) for m in metrics}
-                for i, (x_test, y_test) in enumerate(tqdm(test_batches, desc=f"Epoch {epoch + 1:,} testing")):
+                for i, (x_test, y_test) in enumerate(tqdm(test_batches, desc=f"Epoch {epoch:,} testing")):
                     x_test = x_test.to(device)
                     y_test = y_test.to(device)
                     test_logits = model.forward(x_test)
@@ -224,7 +224,7 @@ def train_classifier(model, train_loader, test_loader, device, start_learning_ra
                     test_metrics[m].append(batch_test_metrics[m].mean())
                 test_metrics["epoch"].append(epoch)
                 print(
-                    f"Test: {epoch + 1:,}/{max_epochs:,}: {", ".join([f"{k}:{v[-1]}" for k, v in test_metrics.items()])}")
+                    f"Test: {epoch:,}/{max_epochs:,}: {", ".join([f"{k}:{v[-1]}" for k, v in test_metrics.items()])}")
             model.train()
 
     if checkpoint_every is not None:
