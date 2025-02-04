@@ -1,42 +1,43 @@
-import numpy as np
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
+from datasets.SlideSeperatedCSVDataset import SlideSeperatedCSVDataset
+from models.mlp import MLPBinaryClassifier
+from models.resnet import Resnet18BinaryClassifier
+from train import train_classifier
+from utils import reduce_dataset, split_dataset, undersample_dataset
 
-def extract_features_from_dataset(slide_seperated_dataset, pretrained_models):
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    print(f"Device: {device}")
+slides_root_dir = "data/whole-slides/gut"
+annotations_root_dir = "data/annotations/json"
+candidates_dataset_dir = "output/candidates"
+model_output_dir = "output/models"
+PretrainedModelClass = Resnet18BinaryClassifier
+features_csv_file_name = f"{PretrainedModelClass.get_pretrained_model_name()}_{PretrainedModelClass.pretrained_output_size}_features.csv"
+print(f"{PretrainedModelClass.get_pretrained_model_name()}: {PretrainedModelClass.pretrained_output_size} features")
 
-    batch_size = 128
-    # original_dataset = LabeledImageDataset("data/candidates", with_index=True)
-    # dataset = reduce_dataset(original_dataset, discard_ratio=0.0)
-    dataset = slide_seperated_dataset
-    for ModelClass in pretrained_models:
-        dataset_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+print(f"Device: {device}")
+batch_size = 4096
+dataset = SlideSeperatedCSVDataset(candidates_dataset_dir, features_csv_file_name)
+dataset = reduce_dataset(dataset, discard_ratio=0.0)
+train_dataset, validation_dataset = split_dataset(dataset, train_ratio=0.9)
+train_dataset = undersample_dataset(train_dataset)
 
-        model = ModelClass(hidden_layers=0)
-        model.to(device)
+train_loader = DataLoader(train_dataset,
+                          batch_size=batch_size,
+                          shuffle=True)
+validation_loader = DataLoader(validation_dataset,
+                               batch_size=batch_size,
+                               shuffle=True)
 
-        output_csv_path = f"output/{model.__class__.__name__}_{model.pretrained_output_size}_features.csv"
-        # Open the CSV file and write header (if needed)
-        with open(output_csv_path, mode='w') as f:
-            header = ','.join([f'feature_{i}' for i in range(model.pretrained_output_size)] + ["label", "file_path"])
-            f.write(header + '\n')
+model = MLPBinaryClassifier(in_features=PretrainedModelClass.pretrained_output_size, hidden_layers=1, units_per_layer=PretrainedModelClass.pretrained_output_size,
+                            dropout=0.3, focal_alpha=0.9, focal_gamma=3.0)
 
-        # Stream-writing each batch to the CSV file
-        file_paths = np.array(dataset.file_paths)
-        with torch.no_grad(), open(output_csv_path, mode='a') as f:
-            for batch_x, batch_y, idx in tqdm(dataset_loader):
-                batch_x = batch_x.to(device)
-                logits = model.pretrained_model.forward(batch_x)
+print(f"Dataset: {len(train_dataset):,} training, {len(validation_dataset):,} validation")
 
-                # Move logits to CPU, detach, and convert to numpy
-                logits = logits.cpu().detach().numpy()
-
-                # Convert logits to DataFrame and write to CSV in append mode
-                batch_df = pd.DataFrame(logits)
-                batch_df['label'] = batch_y
-                batch_df['file_path'] = file_paths[idx]
-                batch_df.to_csv(f, header=False, index=False)
+model = model.to(device)
+model, model_metrics = train_classifier(model, train_loader, validation_loader, device,
+                                        start_learning_rate=0.000075,
+                                        max_epochs=20,
+                                        checkpoint_every=1,
+                                        eval_every=1)

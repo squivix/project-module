@@ -28,8 +28,9 @@ else:
 def generate_dataset_from_slides(slides_root_dir, extractor, output_dir, slide_filenames=None, separate_by_slide=True, extension="jpg"):
     if slide_filenames is None:
         slide_filenames = [file_name for file_name in os.listdir(slides_root_dir) if file_name.endswith(".svs")]
-    if os.path.exists(f"{output_dir}/dataset.json"):
-        with open(f"{output_dir}/dataset.json", "r") as f:
+    metadata_file_name = "extraction-metadata.json"
+    if os.path.exists(f"{output_dir}/{metadata_file_name}"):
+        with open(f"{output_dir}/{metadata_file_name}", "r") as f:
             cache = json.load(f)
             if cache == {**extractor.to_dict(), "slides": sorted(slide_filenames)}:
                 print(f"Found cached candidates dataset {output_dir}")
@@ -52,7 +53,7 @@ def generate_dataset_from_slides(slides_root_dir, extractor, output_dir, slide_f
     for slide_filename in slide_filenames:
         slide_filepath = os.path.join(slides_root_dir, slide_filename)
         extractor.extract_candidates(slide_filepath, callback=save_candidate)
-    with open(f"{output_dir}/dataset.json", "w") as f:
+    with open(f"{output_dir}/{metadata_file_name}", "w") as f:
         cache = {**extractor.to_dict(), "slides": sorted(slide_filenames)}
         json.dump(cache, f)
 

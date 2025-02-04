@@ -2,64 +2,35 @@ import torchvision
 from torch import nn
 from torchvision.models import ResNet50_Weights, ResNet18_Weights
 
-from models.mlp import MLPBinaryClassifier
+from models.mlp import TransferMLPBinaryClassifier
 
 
-class Resnet50Model(nn.Module):
-    def __init__(self, hidden_layers, units_per_layer=128, dropout=0.2, positive_weight=1, negative_weight=1, focal_alpha=0.25, focal_gamma=2.0, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.pretrained_model = torchvision.models.resnet50(weights=ResNet50_Weights.DEFAULT)
-        self.pretrained_model.fc = nn.Identity()
-        for param in self.pretrained_model.parameters():
+class Resnet50BinaryClassifier(TransferMLPBinaryClassifier):
+    pretrained_output_size = 2048
+
+    @staticmethod
+    def create_pretrained_model():
+        pretrained_model = torchvision.models.resnet50(weights=ResNet50_Weights.DEFAULT)
+        pretrained_model.fc = nn.Identity()
+        for param in pretrained_model.parameters():
             param.requires_grad = False
-        if hidden_layers == 0:
-            self.model = None
-        self.pretrained_output_size = 2048
-        self.model = MLPBinaryClassifier(in_features=self.pretrained_output_size,
-                                         hidden_layers=hidden_layers,
-                                         units_per_layer=units_per_layer,
-                                         dropout=dropout,
-                                         positive_weight=positive_weight,
-                                         negative_weight=negative_weight,
-                                         focal_alpha=focal_alpha,
-                                         focal_gamma=focal_gamma)
+        return pretrained_model
 
-    def forward(self, x):
-        pre_logits = self.pretrained_model.forward(x)
-        return self.model.forward(pre_logits)
-
-    def loss_function(self, logits, target):
-        return self.model.loss_function(logits, target)
-
-    def predict(self, probs):
-        return self.model.predict(probs)
+    @staticmethod
+    def get_pretrained_model_name():
+        return 'Resnet50'
 
 
-class Resnet18Model(nn.Module):
-    def __init__(self, hidden_layers, units_per_layer, dropout=0.2, positive_weight=1, negative_weight=1, focal_alpha=0.25, focal_gamma=2.0, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.pretrained_model = torchvision.models.resnet18(weights=ResNet18_Weights.DEFAULT)
-        self.pretrained_model.fc = nn.Identity()
-        for param in self.pretrained_model.parameters():
+class Resnet18BinaryClassifier(TransferMLPBinaryClassifier):
+    pretrained_output_size = 512
+    @staticmethod
+    def create_pretrained_model():
+        pretrained_model = torchvision.models.resnet18(weights=ResNet18_Weights.DEFAULT)
+        pretrained_model.fc = nn.Identity()
+        for param in pretrained_model.parameters():
             param.requires_grad = False
-        if hidden_layers == 0:
-            self.model = None
-        self.pretrained_output_size = 512
-        self.model = MLPBinaryClassifier(in_features=self.pretrained_output_size,
-                                         hidden_layers=hidden_layers,
-                                         units_per_layer=units_per_layer,
-                                         dropout=dropout,
-                                         positive_weight=positive_weight,
-                                         negative_weight=negative_weight,
-                                         focal_alpha=focal_alpha,
-                                         focal_gamma=focal_gamma)
+        return pretrained_model
 
-    def forward(self, x):
-        pre_logits = self.pretrained_model.forward(x)
-        return self.model.forward(pre_logits)
-
-    def loss_function(self, logits, target):
-        return self.model.loss_function(logits, target)
-
-    def predict(self, probs):
-        return self.model.predict(probs)
+    @staticmethod
+    def get_pretrained_model_name():
+        return 'Resnet18'

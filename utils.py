@@ -1,3 +1,4 @@
+import glob
 import math
 import os
 import os.path
@@ -13,10 +14,12 @@ import torch
 from shapely import Polygon, box
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, Subset
+from torchvision.models import InceptionOutputs
 from torchvision.transforms import v2
 from tqdm import tqdm
 
 from datasets.OversampledDataset import OversampledDataset
+from datasets.SlideSeperatedImageDataset import SlideSeperatedImageDataset
 
 
 def plot_model_metrics(model_metrics):
@@ -452,11 +455,10 @@ def sync_data_mislabels():
             # shutil.move(src_path,dst_path)
 
 
-def is_not_mostly_blank(image, non_blank_percentage=0.5, blank_threshold=235):
-    image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    non_white_pixels = np.sum(image_gray < blank_threshold)
-    pure_black_pixels = np.sum(image_gray == 0)
-    return ((non_white_pixels - pure_black_pixels) / image_gray.size) > non_blank_percentage
+def is_not_mostly_blank(image, non_blank_percentage=0.5, min_saturation=20):
+    saturation_channel = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)[:, :, 1]
+    non_white_pixels = np.sum(saturation_channel > min_saturation)
+    return (non_white_pixels / saturation_channel.size) > non_blank_percentage
 
 
 def show_cv2_image(image):
@@ -501,3 +503,79 @@ def rotate_image(image, angle):
     center = (w // 2, h // 2)
     matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
     return cv2.warpAffine(image, matrix, (w, h))
+
+
+def extract_features_from_dataset(candidates_dataset_dir, pretrained_models, split_by_slide=True):
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f"Device: {device}")
+
+    batch_size = 128
+    dataset = SlideSeperatedImageDataset(candidates_dataset_dir, with_index=True)
+    for ModelClass in pretrained_models:
+        pretrained_model = ModelClass.create_pretrained_model()  # ModelClass(hidden_layers=0)
+        pretrained_output_size = ModelClass.pretrained_output_size
+        pretrained_model_name = ModelClass.get_pretrained_model_name()
+        output_csv_filename = f"{pretrained_model_name}_{pretrained_output_size}_features.csv"
+        output_csv_path = f"{candidates_dataset_dir}/{output_csv_filename}"
+
+        if os.path.exists(output_csv_path):
+            print(f"Found cached {output_csv_path}")
+            continue
+        dataset_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+        pretrained_model.to(device)
+        pretrained_model.eval()     #important
+
+        if split_by_slide:
+            slide_folders = []
+            for slide_folder in os.listdir(candidates_dataset_dir):
+                slide_path = f"{candidates_dataset_dir}/{slide_folder}"
+                if os.path.isdir(slide_path):
+                    slide_folders.append(slide_path)
+                    with open(f"{slide_path}/{output_csv_filename}", mode='w') as f:
+                        header = ','.join(["file_path", "slide"] + [f'feature_{i}' for i in range(pretrained_output_size)] + ["label"])
+                        f.write(header + '\n')
+        else:
+            with open(output_csv_path, mode='w') as f:
+                header = ','.join(["file_path", "slide"] + [f'feature_{i}' for i in range(pretrained_output_size)] + ["label"])
+                f.write(header + '\n')
+
+        # stream-writing each batch to the CSV file
+        with torch.no_grad():
+            for batch_x, batch_y, idxs in tqdm(dataset_loader, desc=f"Extracting feats from {pretrained_model_name}"):
+                batch_x = batch_x.to(device)
+                logits = pretrained_model.forward(batch_x)
+                if isinstance(logits, InceptionOutputs):
+                    logits = logits.logits
+
+                # Move logits to CPU, detach, and convert to numpy
+                logits = logits.cpu().detach().numpy()
+
+                # Convert logits to DataFrame and write to CSV in append mode
+                batch_df = pd.DataFrame(logits)
+                batch_df['label'] = batch_y
+                paths = []
+                slides = []
+                for idx in idxs:
+                    file_path = dataset.get_item_file_path(idx)
+                    paths.append(file_path)
+                    slides.append(Path(file_path).stem.split("_")[0])
+                batch_df['file_path'] = paths
+                batch_df['slide'] = slides
+                cols = batch_df.columns.tolist()
+                batch_df = batch_df[cols[-2:] + cols[:-2]]
+                if not split_by_slide:
+                    with open(output_csv_path, mode='a') as f:
+                        batch_df.to_csv(f, header=False, index=False)
+                else:
+                    for slide in batch_df['slide'].unique():
+                        slide_df = batch_df[batch_df['slide'] == slide]
+                        with open(f"{candidates_dataset_dir}/{slide}/{output_csv_filename}", mode='a') as f:
+                            slide_df.to_csv(f, header=False, index=False)
+
+
+def clear_features_in_slides(candidates_dataset_dir):
+    for slide_folder in os.listdir(candidates_dataset_dir):
+        for file in glob.glob(os.path.join(f"{candidates_dataset_dir}/{slide_folder}", "*.csv")):
+            os.remove(file)
+        for file in glob.glob(os.path.join(f"{candidates_dataset_dir}/{slide_folder}", "*.pickle")):
+            os.remove(file)

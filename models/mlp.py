@@ -1,3 +1,4 @@
+import abc
 from itertools import chain, repeat
 
 import torch
@@ -52,7 +53,7 @@ class MLPBinaryClassifier(nn.Module):
         bce_loss = F.binary_cross_entropy(output, target, reduction='none')
 
         pt = output * target + (1 - output) * (1 - target)
-        focal_weight =  (1 - pt) ** self.focal_gamma
+        focal_weight = (1 - pt) ** self.focal_gamma
         alpha_t = self.focal_alpha * target + (1 - self.focal_alpha) * (1 - target)
         focal_loss = alpha_t * focal_weight * bce_loss
         return focal_loss.mean()
@@ -65,3 +66,45 @@ class MLPBinaryClassifier(nn.Module):
 def weight_reset(m):
     if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
         m.reset_parameters()
+
+
+class TransferMLPBinaryClassifier(nn.Module, abc.ABC):
+    def __init__(self, hidden_layers=1, model=None, units_per_layer=128, dropout=0.2, positive_weight=1, negative_weight=1, focal_alpha=0.25, focal_gamma=2.0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.pretrained_model = self.create_pretrained_model()
+        if model is not None:
+            self.model = model
+        else:
+            self.model = MLPBinaryClassifier(in_features=self.pretrained_output_size,
+                                             hidden_layers=hidden_layers,
+                                             units_per_layer=units_per_layer,
+                                             dropout=dropout,
+                                             positive_weight=positive_weight,
+                                             negative_weight=negative_weight,
+                                             focal_alpha=focal_alpha,
+                                             focal_gamma=focal_gamma)
+
+    def forward(self, x):
+        pre_logits = self.pre_forward(x)
+        return self.model.forward(pre_logits)
+
+    @staticmethod
+    @abc.abstractmethod
+    def create_pretrained_model():
+        pass
+
+    @staticmethod
+    @abc.abstractmethod
+    def get_pretrained_model_name():
+        pass
+
+    def pre_forward(self, x):
+        with torch.no_grad():
+            return self.pretrained_model.eval().forward(x)
+
+    def loss_function(self, logits, target):
+        return self.model.loss_function(logits, target)
+
+    def predict(self, probs):
+        return self.model.predict(probs)

@@ -1,5 +1,4 @@
 import os
-from itertools import chain
 
 import pandas as pd
 from torch.utils.data import Dataset
@@ -7,15 +6,15 @@ from torch.utils.data import Dataset
 from datasets.LabeledImageDataset import LabeledImageDataset
 
 
-class SlideSeperatedDataset(Dataset):
-    def __init__(self, root_dir, included_slides_names, transform=None, extension='.[jpg][png]*', with_index=False):
+class SlideSeperatedImageDataset(Dataset):
+    def __init__(self, root_dir, included_slides_names=None, transform=None, extension='.[jpg][png]*', with_index=False):
         self.slide_to_dataset = {}
         self.slides_length_df = {"slide": [], "dataset_length": []}
         self.with_index = with_index
         self.labels = []
         for slide in os.listdir(root_dir):
             slide_dir = os.path.join(root_dir, slide)
-            if not os.path.isdir(slide_dir) or slide not in included_slides_names:
+            if not os.path.isdir(slide_dir) or (included_slides_names is not None and slide not in included_slides_names):
                 continue
             self.slide_to_dataset[slide] = LabeledImageDataset(slide_dir, transform=transform, extension=extension, with_index=with_index)
             self.labels.extend(self.slide_to_dataset[slide].labels)
