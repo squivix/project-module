@@ -15,7 +15,7 @@ from utils import reduce_dataset, get_polygon_bbox_intersection
 
 def extract_possible_mislabels():
     model = torch.load("model.pickle")
-    dataset = LabeledImageDataset("output/candidates", with_index=True)
+    dataset = LabeledImageDataset("output/all-nay-candidates/candidates", with_index=True)
     dataset = reduce_dataset(dataset, discard_ratio=0.0)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     batch_size = 256
@@ -102,7 +102,7 @@ def extract_raw_annotation_points():
 
 
 dataset, sorted_probs, sorted_indexes = extract_possible_mislabels()
-candidate_output_dir = 'output/mislabel-candidates/'
+candidate_output_dir = 'output/mislabel-candidates'
 
 negative_set = extract_negative_set()
 if os.path.exists(candidate_output_dir):
@@ -120,7 +120,7 @@ for i in range(len(sorted_indexes)):
     path_obj = Path(src_file_path)
     slide_filename, x_min, y_min, width, height = path_obj.stem.split("_")
     candidate_bbox = (int(x_min), int(y_min), int(width), int(height))
-    annotation_points = [a["points"] for a in slide_name_to_positive_annotations[slide_filename]]
+    annotation_points = slide_name_to_positive_annotations[slide_filename]#[a["points"] for a in slide_name_to_positive_annotations[slide_filename]]
     was_already_positive=any([get_polygon_bbox_intersection(p, candidate_bbox)>intersection_with_pos_threshold for p in annotation_points])
     if prob >= confidence_threshold and "negative" in src_file_path and not was_already_positive and path_obj.stem not in negative_set:
         new_file_name = f"{f'{prob:.8f}'[2:]}_{path_obj.stem}{path_obj.suffix}"
