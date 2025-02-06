@@ -12,7 +12,6 @@ from tqdm import tqdm
 from utils import downscale_bbox, calculate_bbox_overlap, downscale_image, mean_blur_image, relative_bbox_to_absolute, is_bbox_1_center_in_bbox_2, crop_cv_image, \
     upscale_bbox, downscale_points, absolute_points_to_relative, get_polygon_bbox_intersection, crop_bbox
 
-matplotlib.use('qtagg')
 
 if hasattr(os, 'add_dll_directory'):
     # Windows

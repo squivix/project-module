@@ -253,7 +253,7 @@ def downscale_points(points, downscale_factor):
     downscale_factor = int(downscale_factor)
     new_points = []
     for point in points:
-        new_point = tuple(c // downscale_factor for c in point)
+        new_point = tuple(int(c / downscale_factor) for c in point)
         new_points.append(new_point)
 
     return new_points
@@ -466,7 +466,7 @@ def is_textured_image(image, min_variance=40.0):
     return variance > min_variance
 
 
-def show_cv2_image(image):
+def show_cv2_image(image, title=None):
     if image.shape[2] == 4:
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
     else:
@@ -474,30 +474,47 @@ def show_cv2_image(image):
     plt.figure(figsize=(10, 6))
     plt.imshow(image_rgb)
     plt.axis('off')
-    plt.title("Image")
+    if title is None:
+        title = "image"
+    plt.title(title)
     plt.show()
 
 
-def show_cv2_images(images):
-    max_h = max(img.shape[0] for img in images)
-    max_w = max(img.shape[1] for img in images)
+def show_cv2_images(images, titles=None):
+    """
+    Display multiple OpenCV images in a grid layout using Matplotlib.
 
-    fig, axes = plt.subplots(1, len(images), figsize=(5 * len(images), 5))
+    Parameters:
+        images (list): List of OpenCV images (NumPy arrays).
+        titles (list, optional): List of titles for each image.
+    """
+    num_images = len(images)
 
-    if len(images) == 1:
-        axes = [axes]
+    # Determine the grid size (rows x cols)
+    # Calculate rows and columns for a roughly square grid
+    cols = math.ceil(math.sqrt(num_images))  # More columns than rows when not a perfect square
+    rows = math.ceil(num_images / cols)  # Adjust rows accordingl
 
-    for ax, image in zip(axes, images):
-        if image.shape[2] == 4:
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+    fig, axes = plt.subplots(rows, cols, figsize=(rows * 3, cols * 3), gridspec_kw={'wspace': 0, 'hspace': 0}, squeeze=True)
+    expected_shape = None
+    for idx, ax in enumerate(axes.flat):
+        if idx < num_images:
+            image = images[idx]
+
+            # Convert image to RGB if necessary
+            if image.shape[2] == 4:
+                image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+            else:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            expected_shape = image.shape
+            ax.imshow(image)
+
+            # Add title if provided
+            if titles and idx < len(titles):
+                ax.set_title(titles[idx], fontsize=10)
         else:
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        ax.imshow(image_rgb)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_xlim([0, max_w])
-        ax.set_ylim([max_h, 0])
+            ax.imshow(np.zeros(expected_shape))
+        ax.axis('off')  # Hide empty subplots
 
     plt.show()
 
@@ -584,3 +601,22 @@ def clear_features_in_slides(candidates_dataset_dir):
             os.remove(file)
         for file in glob.glob(os.path.join(f"{candidates_dataset_dir}/{slide_folder}", "*.pickle")):
             os.remove(file)
+
+
+def bbox_to_points(bbox):
+    x_min, y_min, width, height = bbox
+    return [(x_min, y_min),
+            (x_min + width, y_min),
+            (x_min + width, y_min + height),
+            (x_min, y_min + height),
+            (x_min, y_min)]
+
+
+def rgb_to_bgr(color):
+    return color[2], color[1], color[0]
+
+
+def filter_points_within_bbox(points, bbox):
+    x_min, y_min, width, height = bbox
+    x_max, y_max = x_min + width, y_min + height
+    return [(x, y) for x, y in points if x_min <= x <= x_max and y_min <= y <= y_max]

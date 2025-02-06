@@ -1,20 +1,18 @@
+import itertools
 import json
 import math
 import os
+import random
 import shutil
-from fileinput import filename
 from pathlib import Path
 
 import cv2
-import matplotlib
 import numpy as np
 from imutils.object_detection import non_max_suppression
 from tqdm import tqdm
 
 from utils import is_not_mostly_blank, downscale_bbox, absolute_points_to_relative, downscale_points, relative_bbox_to_absolute, \
-    get_polygon_bbox_intersection, mean_blur_image, upscale_bbox, show_cv2_image, rotate_image, crop_cv_image, is_textured_image
-
-matplotlib.use('qtagg')
+    mean_blur_image, upscale_bbox, show_cv2_image, rotate_image, crop_cv_image, is_textured_image
 
 if hasattr(os, 'add_dll_directory'):
     # Windows
@@ -23,6 +21,26 @@ if hasattr(os, 'add_dll_directory'):
         import openslide
 else:
     import openslide
+
+
+def get_random_regions(slide_filepath, n_regions=5, size=4096, level=1):
+    slide = openslide.OpenSlide(slide_filepath)
+    # level_downsample = slide.level_downsamples[level]
+    # _, _, ds_size, _ = downscale_bbox((0, 0, size, size), level_downsample)
+    full_slide_width, full_slide_height = slide.level_dimensions[0]
+    bboxes = []
+    # regions = []
+    all_possible_regions = list(itertools.product(range(0, full_slide_width, size), range(0, full_slide_height, size)))
+    random.shuffle(all_possible_regions)
+    for x_min, y_min in all_possible_regions:
+        if len(bboxes) >= n_regions:
+            break
+        # cell = np.array(slide.read_region((x_min, y_min), level, (ds_size, ds_size)).convert("RGBA"))
+        # if not is_not_mostly_blank(cell, non_blank_percentage=0.25, min_saturation=30):
+        #     continue
+        # regions.append(cell)
+        bboxes.append((x_min, y_min, size, size))
+    return bboxes
 
 
 def generate_dataset_from_slides(slides_root_dir, extractor, output_dir, slide_filenames=None, separate_by_slide=True, extension="jpg"):
@@ -44,7 +62,7 @@ def generate_dataset_from_slides(slides_root_dir, extractor, output_dir, slide_f
     def save_candidate(candidate, slide):
         x_min, y_min, w, h = candidate["candidate_bbox"]
         is_positive = candidate["is_positive"]
-        crop = np.array(slide.read_region((x_min, y_min), 0, (w, h)))
+        crop = np.array(slide.read_region((x_min, y_min), 0, (w, h)).convert("RGBA"))
         slide_name = Path(slide_filename).stem
         output_path = f"{output_dir}/{f'{slide_name}/' if separate_by_slide else ''}/{'positive' if is_positive else 'negative'}/"
         os.makedirs(output_path, exist_ok=True)
@@ -91,7 +109,7 @@ class TemplateMatchExtractor:
                 if self.verbose:
                     pbar.update(1)
                 cell_bbox_level_0 = (x, y, self.cell_size, self.cell_size)
-                cell = np.array(slide.read_region((x, y), self.level, (ds_cell_size, ds_cell_size)))
+                cell = np.array(slide.read_region((x, y), self.level, (ds_cell_size, ds_cell_size)).convert("RGBA"))
 
                 if is_not_mostly_blank(cell, non_blank_percentage=0.1):
                     ds_candidate_size = round(self.candidate_size / level_downsample)
