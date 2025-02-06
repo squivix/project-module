@@ -12,7 +12,7 @@ from imutils.object_detection import non_max_suppression
 from tqdm import tqdm
 
 from utils import is_not_mostly_blank, downscale_bbox, absolute_points_to_relative, downscale_points, relative_bbox_to_absolute, \
-    get_polygon_bbox_intersection, mean_blur_image, upscale_bbox, show_cv2_image, rotate_image, crop_cv_image
+    get_polygon_bbox_intersection, mean_blur_image, upscale_bbox, show_cv2_image, rotate_image, crop_cv_image, is_textured_image
 
 matplotlib.use('qtagg')
 
@@ -59,8 +59,9 @@ def generate_dataset_from_slides(slides_root_dir, extractor, output_dir, slide_f
 
 
 class TemplateMatchExtractor:
-    def __init__(self, level=2, candidate_size=256, match_threshold=0.5, cell_size=4096, candidate_overlap_threshold=0.4, verbose=True, display=False):
+    def __init__(self, labeler, level=2, candidate_size=256, match_threshold=0.5, cell_size=4096, candidate_overlap_threshold=0.4, verbose=True, display=False):
         self.cell_size = cell_size
+        self.labeler = labeler
         self.level = level
         self.candidate_size = candidate_size
         self.match_threshold = match_threshold
@@ -71,11 +72,10 @@ class TemplateMatchExtractor:
         self.templates_dir = f'data/templates/{self.level}'
 
     def extract_candidates(self, slide_filepath, callback=None):
-        slide_filename = Path(slide_filepath).stem
-        # if self.verbose:
-        #     print(f"Extracting candidates from {slide_filename}")
-        with open(f"data/annotations/json/{slide_filename}.json") as f:
-            positive_rois = json.load(f)
+        blue = (255, 0, 0)
+        green = (0, 255, 0)
+        red = (0, 0, 255)
+        slide_name = Path(slide_filepath).stem
         slide = openslide.OpenSlide(slide_filepath)
         level_downsample = slide.level_downsamples[self.level]
         _, _, ds_cell_size, _ = downscale_bbox((0, 0, self.cell_size, self.cell_size), level_downsample)
@@ -84,7 +84,7 @@ class TemplateMatchExtractor:
         cells_count_y = math.floor(full_slide_height / self.cell_size)
         candidates = []
         if self.verbose:
-            pbar = tqdm(total=cells_count_x * cells_count_y, desc=f"Extracting candidates from slide {slide_filename}")
+            pbar = tqdm(total=cells_count_x * cells_count_y, desc=f"Extracting candidates from slide {slide_name}")
 
         for j, y in enumerate(range(0, full_slide_height, self.cell_size)):
             for i, x in enumerate(range(0, full_slide_width, self.cell_size)):
@@ -97,38 +97,26 @@ class TemplateMatchExtractor:
                     ds_candidate_size = round(self.candidate_size / level_downsample)
                     if self.display:
                         display_copy = cell.copy()
-
-                    positive_rois_indexes_in_cell = []
-                    for i, positive_roi in enumerate(positive_rois):
-                        positive_points = positive_roi
-                        # TODO fix this mess: you've got the same issue one level higher: the big cells you grid from the whole slide could split a positive roi in half and only one will have the center
-                        if get_polygon_bbox_intersection(positive_points, cell_bbox_level_0) > 0.1:
+                    if self.display:
+                        for i, positive_points in enumerate(self.labeler.get_positive_regions(slide_name, cell_bbox_level_0)):
                             relative_positive_points = absolute_points_to_relative(positive_points, cell_bbox_level_0)
                             relative_positive_points = downscale_points(relative_positive_points, level_downsample)
-
-                            positive_rois_indexes_in_cell.append(i)
-                            if self.display:
-                                cv2.polylines(display_copy, [np.array(relative_positive_points)], isClosed=True, color=(0, 255, 0), thickness=self.outline_thickness)
-                    filtered_matches = self.template_match(cell, match_size=ds_candidate_size, filter=lambda crop: is_not_mostly_blank(crop, non_blank_percentage=0.1))
-                    for candidate_bbox in filtered_matches:
-                        is_positive = False
+                            cv2.polylines(display_copy, [np.array(relative_positive_points, dtype=np.int32)], isClosed=True, color=red, thickness=self.outline_thickness)
+                    matches = self.template_match(cell, match_size=ds_candidate_size,
+                                                  filter=lambda crop: is_not_mostly_blank(crop, non_blank_percentage=0.01) and is_textured_image(crop, min_variance=40.0))
+                    for candidate_bbox in matches:
                         abs_candidate_bbox = relative_bbox_to_absolute(upscale_bbox(candidate_bbox, level_downsample), cell_bbox_level_0)
-
-                        for i in positive_rois_indexes_in_cell:
-                            positive_points = positive_rois[i]
-                            if get_polygon_bbox_intersection(positive_points, abs_candidate_bbox) >= 0.35:
-                                is_positive = True
-                                break
+                        is_positive = self.labeler.is_positive_patch(slide_name, abs_candidate_bbox)
 
                         if self.display:
                             cv2.rectangle(display_copy, (candidate_bbox[0], candidate_bbox[1]), (candidate_bbox[0] + candidate_bbox[2], candidate_bbox[1] + candidate_bbox[3]),
-                                          (0, 0, 255) if is_positive else (0, 255, 0), self.outline_thickness)
+                                          green if is_positive else blue, self.outline_thickness)
                         abs_x_min, abs_y_min, _, _ = abs_candidate_bbox
                         candidate = {"candidate_bbox": (abs_x_min, abs_y_min, self.candidate_size, self.candidate_size), "is_positive": is_positive}
                         candidates.append(candidate)
                         if callback is not None:
                             callback(candidate, slide)
-                    if self.display:
+                    if self.display and self.labeler.contains_positive_region(slide_name, cell_bbox_level_0):
                         show_cv2_image(display_copy)
         if self.verbose:
             pbar.close()

@@ -25,7 +25,7 @@ class MLPBinaryClassifier(nn.Module):
             nn.Sigmoid()
         )
         self.hidden_layers = hidden_layers
-        self.threshold = threshold
+        self.default_threshold = threshold
         self.negative_weight = negative_weight
         self.positive_weight = positive_weight
         self.focal_alpha = focal_alpha
@@ -58,9 +58,11 @@ class MLPBinaryClassifier(nn.Module):
         focal_loss = alpha_t * focal_weight * bce_loss
         return focal_loss.mean()
 
-    def predict(self, prob):
+    def predict(self, prob, threshold=None):
+        if threshold is None:
+            threshold = self.default_threshold
         with torch.no_grad():
-            return (prob >= self.threshold).T.float()
+            return (prob >= threshold).T.float()
 
 
 def weight_reset(m):
@@ -106,5 +108,5 @@ class TransferMLPBinaryClassifier(nn.Module, abc.ABC):
     def loss_function(self, logits, target):
         return self.model.loss_function(logits, target)
 
-    def predict(self, probs):
-        return self.model.predict(probs)
+    def predict(self, probs,threshold=None):
+        return self.model.predict(probs, threshold)

@@ -455,10 +455,15 @@ def sync_data_mislabels():
             # shutil.move(src_path,dst_path)
 
 
-def is_not_mostly_blank(image, non_blank_percentage=0.5, min_saturation=20):
+def is_not_mostly_blank(image, non_blank_percentage=0.1, min_saturation=15):
     saturation_channel = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)[:, :, 1]
     non_white_pixels = np.sum(saturation_channel > min_saturation)
     return (non_white_pixels / saturation_channel.size) > non_blank_percentage
+
+
+def is_textured_image(image, min_variance=40.0):
+    variance = np.var(image)
+    return variance > min_variance
 
 
 def show_cv2_image(image):
@@ -505,7 +510,7 @@ def rotate_image(image, angle):
     return cv2.warpAffine(image, matrix, (w, h))
 
 
-def extract_features_from_dataset(candidates_dataset_dir, pretrained_models, split_by_slide=True):
+def extract_features_from_dataset(candidates_dataset_dir, pretrained_models, split_by_slide=False):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}")
 
@@ -523,7 +528,7 @@ def extract_features_from_dataset(candidates_dataset_dir, pretrained_models, spl
             continue
         dataset_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
         pretrained_model.to(device)
-        pretrained_model.eval()     #important
+        pretrained_model.eval()  # important
 
         if split_by_slide:
             slide_folders = []
