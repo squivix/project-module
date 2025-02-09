@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset
 from torchvision.io import read_image, ImageReadMode
 
-from datasets.default_image_transform import default_image_transform
+from transforms.default_image_transform import default_image_transform
 
 
 class LabeledImageDataset(Dataset):
@@ -40,7 +40,8 @@ class LabeledImageDataset(Dataset):
     def get_item_untransformed(self, idx):
         img_path = self.file_paths[idx]
         x = read_image(img_path, mode=ImageReadMode.RGB)
-        return x
+        y = self.labels[idx]
+        return x, y
 
     def __getitem__(self, idx):
         img_path = self.file_paths[idx]

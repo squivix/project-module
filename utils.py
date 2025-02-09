@@ -12,13 +12,13 @@ import numpy as np
 import pandas as pd
 import torch
 from shapely import Polygon, box
+from sklearn.metrics import precision_recall_curve, auc
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision.models import InceptionOutputs
 from torchvision.transforms import v2
 from tqdm import tqdm
 
-from datasets.OversampledDataset import OversampledDataset
 from datasets.SlideSeperatedImageDataset import SlideSeperatedImageDataset
 
 
@@ -32,8 +32,9 @@ def plot_model_metrics(model_metrics):
     ax[0].set_xlabel('Epoch')
     ax[0].set_title('Loss in training and testing by epoch')
 
-    for metric in ["accuracy", "precision", "recall", "f1"]:
-        ax[1].plot(model_metrics["test_epoch"], model_metrics[f"test_{metric}"], label=f"test {metric}")
+    for metric in ["accuracy", "precision", "recall", "f1", "pr_auc"]:
+        if f"test_{metric}" in model_metrics:
+            ax[1].plot(model_metrics["test_epoch"], model_metrics[f"test_{metric}"], label=f"test {metric}")
     ax[1].legend()
     ax[1].grid()
     ax[1].set_title('Confusion metrics in testing by epoch')
@@ -75,40 +76,16 @@ def apply_model(model, test_dataset, test_indexes, device):
     return
 
 
-def test_model(model, dataset, device, batch_size=128):
-    test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    metrics = ["accuracy", "loss", "precision", "recall", "f1", "mcc"]
-    test_metrics = dict()
-    model.to(device)
-    model.eval()
-    with torch.no_grad():
-        test_batches = iter(test_loader)
-
-        batch_test_metrics = {m: np.empty(len(test_batches)) for m in metrics}
-        for i, (x_test, y_test) in enumerate(tqdm(test_batches, desc=f"Evaluating model")):
-            x_test = x_test.to(device)
-            y_test = y_test.to(device)
-            test_logits = model.forward(x_test)
-            test_loss = model.loss_function(test_logits, y_test)
-            test_preds = model.predict(test_logits)
-            test_accuracy, test_precision, test_recall, test_f1, test_mcc = calc_binary_classification_metrics(y_test,
-                                                                                                               test_preds)
-
-            batch_test_metrics["loss"][i] = test_loss
-            batch_test_metrics["accuracy"][i] = test_accuracy
-            batch_test_metrics["precision"][i] = test_precision
-            batch_test_metrics["recall"][i] = test_accuracy
-            batch_test_metrics["f1"][i] = test_f1
-            batch_test_metrics["mcc"][i] = test_mcc
-        for m in metrics:
-            test_metrics[m] = batch_test_metrics[m].mean()
-    return test_metrics
-
-
 def divide(num, donim):
     if num == 0:
         return 0.0
     return num / donim
+
+
+def compute_pr_auc(y_true, y_pred):
+    precision, recall, _ = precision_recall_curve(y_true.detach().cpu(), y_pred.detach().cpu())
+    pr_auc = auc(recall, precision)
+    return pr_auc
 
 
 def calc_binary_classification_metrics(true_labels, predicted_labels):
@@ -203,30 +180,6 @@ default_oversample_transforms = v2.Compose([
     v2.ToDtype(torch.float32, scale=True),
     v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
-
-
-def oversample_dataset(dataset: Dataset, transforms=None, augment_Size: int = None):
-    if augment_Size == 0:
-        return dataset
-
-    labels = dataset.labels
-    label_indices = defaultdict(list)
-
-    # Group indices by class
-    for idx, label in enumerate(labels):
-        if isinstance(label, torch.Tensor):
-            label = label.item()
-        label_indices[label].append(idx)
-
-    if augment_Size is None:
-        augment_Size = max(len(indices) for indices in label_indices.values())
-
-    minority_label = min(label_indices, key=lambda k: len(label_indices[k]))
-
-    oversampled_indices = np.random.choice(label_indices[minority_label], augment_Size, replace=True).tolist()
-    if transforms is None:
-        transforms = default_oversample_transforms
-    return OversampledDataset(dataset, oversampled_indices, minority_label, transforms)
 
 
 def clear_dir(dir_path_string):
@@ -620,3 +573,12 @@ def filter_points_within_bbox(points, bbox):
     x_min, y_min, width, height = bbox
     x_max, y_max = x_min + width, y_min + height
     return [(x, y) for x, y in points if x_min <= x <= x_max and y_min <= y <= y_max]
+
+
+def calculate_ratio_based_focal_alpha(dataset):
+    labels = dataset.labels
+    num_positive = torch.sum(labels).item()
+    num_negative = (labels.shape[0] - num_positive)
+
+    ratio = num_positive / (num_positive + num_negative) if num_negative > 0 else float('inf')
+    return 1 - ratio

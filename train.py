@@ -15,10 +15,10 @@ from tqdm import tqdm
 
 from models.mlp import MLPBinaryClassifier, weight_reset
 from schedulers.CosineLRScheduler import CosineLRScheduler
-from utils import calc_binary_classification_metrics, undersample_dataset
+from utils import calc_binary_classification_metrics, undersample_dataset, compute_pr_auc
 
 
-def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32, undersample=True,
+def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k=5, max_epochs=20, batch_size=32, undersample=False, early_stopper=None,
                       hidden_layer_combs=None,
                       unit_combs=None,
                       dropout_combs=None,
@@ -63,7 +63,7 @@ def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k
             if not param_key in param_to_metrics:
                 eval_metrics = kfold_train_eval(model_builder, dataset,
                                                 batch_size=batch_size, device=device, k=k, max_epochs=max_epochs,
-                                                learning_rate=learning_rate, weight_decay=weight_decay, undersample=undersample)
+                                                learning_rate=learning_rate, weight_decay=weight_decay, undersample=undersample, early_stopper=early_stopper)
                 param_to_metrics[param_key] = eval_metrics
             else:
                 eval_metrics = param_to_metrics[param_key]
@@ -72,20 +72,21 @@ def kfold_grid_search(dataset, device, in_features, checkpoint_file_path=None, k
             with open(f"{checkpoint_dir}/{i}.json", "w") as f:
                 json.dump(param_to_metrics, f)
 
-            if eval_metrics["test_mcc"] >= 0.5:
-                print(f"Over 0.5 mcc found with {param_key}")
+            if eval_metrics["test_pr_auc"] >= 0.5:
+                print(f"Over 0.5 pr_auc found with {param_key}")
                 with open(f"{checkpoint_dir}/good_mcc_{i}.json", "w") as f:
                     json.dump(param_to_metrics, f)
             i += 1
-    best_params = max(param_to_metrics, key=lambda k: param_to_metrics[k]['test_mcc'])
+    best_params = max(param_to_metrics, key=lambda k: param_to_metrics[k]['test_pr_auc'])
     print()
     print(f"Best params: {best_params}")
     print(f"Best performance: {param_to_metrics[best_params]}")
+    return best_params
 
 
 def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_decay=0.0, max_epochs=20,
-                     batch_size=32, undersample=True):
-    metrics = ["loss", "accuracy", "precision", "recall", "f1", "mcc"]
+                     batch_size=32, undersample=True, early_stopper=None):
+    metrics = ["loss", "accuracy", "precision", "recall", "f1", "mcc", "pr_auc"]
     test_metrics = {m: [] for m in metrics}
     kfold = StratifiedKFold(n_splits=k, shuffle=True)
 
@@ -100,7 +101,8 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
         model.apply(weight_reset)
         model = model.to(device)
         optimizer = Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-
+        if early_stopper is not None:
+            early_stopper.reset()
         for epoch in tqdm(range(max_epochs), desc=f"Fold {fold + 1}"):
             model.train()
             batches = iter(train_loader)
@@ -113,6 +115,19 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
                 loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()
+            model.eval()
+            with torch.no_grad():
+                test_batches = iter(test_loader)
+
+                batch_test_loss = np.empty(len(test_batches))
+                for i, (x_test, y_test) in enumerate(test_batches):
+                    x_test = x_test.to(device)
+                    y_test = y_test.to(device)
+                    test_logits = model.forward(x_test)
+                    test_loss = model.loss_function(test_logits, y_test)
+                    batch_test_loss[i] = test_loss
+            if early_stopper is not None and early_stopper(batch_test_loss.mean()):
+                break
 
         model.eval()
         with torch.no_grad():
@@ -126,6 +141,7 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
                 test_loss = model.loss_function(test_logits, y_test)
                 test_preds = model.predict(test_logits)
                 accuracy, precision, recall, f1, mcc = calc_binary_classification_metrics(y_test, test_preds)
+                pr_auc = compute_pr_auc(y_test, test_logits)
 
                 batch_test_metrics["loss"][i] = test_loss
                 batch_test_metrics["accuracy"][i] = accuracy
@@ -133,19 +149,21 @@ def kfold_train_eval(model, dataset, device, k=5, learning_rate=0.001, weight_de
                 batch_test_metrics["recall"][i] = recall
                 batch_test_metrics["f1"][i] = f1
                 batch_test_metrics["mcc"][i] = mcc
+                batch_test_metrics["pr_auc"][i] = pr_auc
             for m in metrics:
                 test_metrics[m].append(batch_test_metrics[m].mean())
-    return {**{f"test_{m}": numpy.mean(test_metrics[m]) for m in metrics}, }
+    return {**{f"test_{m}": numpy.mean(test_metrics[m]) for m in metrics}}
 
 
 def train_classifier(model, train_loader, test_loader, device, start_learning_rate=0.001, weight_decay=0,
                      max_epochs=1000,
                      min_learning_rate=None,
+                     early_stopper=None,
                      lr_end_steady_steps=10,
                      lr_warmup_steps=10,
                      checkpoint_every=None, eval_every=1):
     optimizer = Adam(model.parameters(), lr=start_learning_rate, weight_decay=weight_decay)
-    metrics = ["loss", "accuracy", "precision", "recall", "f1", "mcc", "ece"]
+    metrics = ["loss", "accuracy", "precision", "recall", "f1", "mcc", "ece", "pr_auc"]
     train_metrics = {m: [] for m in [*metrics, "epoch"]}
     test_metrics = {m: [] for m in [*metrics, "epoch"]}
 
@@ -177,6 +195,7 @@ def train_classifier(model, train_loader, test_loader, device, start_learning_ra
             loss = model.loss_function(logits, batch_y)
             preds = model.predict(logits)
             accuracy, precision, recall, f1, mcc = calc_binary_classification_metrics(batch_y, preds)
+            pr_auc = compute_pr_auc(batch_y, logits)
 
             batch_train_metrics["loss"][i] = loss
             batch_train_metrics["accuracy"][i] = accuracy
@@ -184,7 +203,8 @@ def train_classifier(model, train_loader, test_loader, device, start_learning_ra
             batch_train_metrics["recall"][i] = recall
             batch_train_metrics["f1"][i] = f1
             batch_train_metrics["mcc"][i] = mcc
-            batch_train_metrics["ece"][i] = ece(preds.squeeze(), batch_y.squeeze()).item()
+            batch_train_metrics["ece"][i] = ece(logits.squeeze(), batch_y.squeeze()).item()
+            batch_train_metrics["pr_auc"][i] = pr_auc
 
             loss.backward()
             optimizer.step()
@@ -211,6 +231,7 @@ def train_classifier(model, train_loader, test_loader, device, start_learning_ra
                     test_accuracy, test_precision, test_recall, test_f1, test_mcc = calc_binary_classification_metrics(
                         y_test,
                         test_preds)
+                    pr_auc = compute_pr_auc(y_test, test_logits)
 
                     batch_test_metrics["loss"][i] = test_loss
                     batch_test_metrics["accuracy"][i] = test_accuracy
@@ -218,13 +239,15 @@ def train_classifier(model, train_loader, test_loader, device, start_learning_ra
                     batch_test_metrics["recall"][i] = test_recall
                     batch_test_metrics["f1"][i] = test_f1
                     batch_test_metrics["mcc"][i] = test_mcc
-                    batch_test_metrics["ece"][i] = ece(test_preds.squeeze(), y_test.squeeze()).item()
+                    batch_test_metrics["ece"][i] = ece(test_logits.squeeze(), y_test.squeeze()).item()
+                    batch_test_metrics["pr_auc"][i] = pr_auc
 
                 for m in metrics:
                     test_metrics[m].append(batch_test_metrics[m].mean())
                 test_metrics["epoch"].append(epoch)
-                print(
-                    f"Test: {epoch:,}/{max_epochs:,}: {", ".join([f"{k}:{v[-1]}" for k, v in test_metrics.items()])}")
+                print(f"Test: {epoch:,}/{max_epochs:,}: {", ".join([f"{k}:{v[-1]}" for k, v in test_metrics.items()])}")
+                if early_stopper is not None and early_stopper(test_metrics["loss"][-1]):
+                    break
             model.train()
 
     if checkpoint_every is not None:

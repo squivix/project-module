@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from datasets.default_image_transform import default_image_transform
+from transforms.default_image_transform import default_image_transform
 
 if hasattr(os, 'add_dll_directory'):
     # Windows

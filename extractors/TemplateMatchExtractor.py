@@ -77,7 +77,7 @@ def generate_dataset_from_slides(slides_root_dir, extractor, output_dir, slide_f
 
 
 class TemplateMatchExtractor:
-    def __init__(self, labeler, level=2, candidate_size=256, match_threshold=0.5, cell_size=4096, candidate_overlap_threshold=0.4, verbose=True, display=False):
+    def __init__(self, labeler, level=2, candidate_size=256, match_threshold=0.5, cell_size=4096, candidate_overlap_threshold=0.0, verbose=True, display=False):
         self.cell_size = cell_size
         self.labeler = labeler
         self.level = level

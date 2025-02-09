@@ -4,7 +4,7 @@ from shapely import Polygon, box, Point
 
 
 class GroundTruthLabeler:
-    def __init__(self, json_file, csv_file, patch_size=256, io_polygon_thresh=0.3, iou_bbox_thresh=0.3):
+    def __init__(self, json_file, csv_file, patch_size=256, io_polygon_thresh=0.3, iou_bbox_thresh=0.3, use_only_polygons=False, use_only_patches=False):
         self.patch_size = patch_size
         # buffer(0)
         with open(json_file, 'r') as f:
@@ -13,24 +13,25 @@ class GroundTruthLabeler:
                 slide: [Polygon(points) for points in polygons]
                 for slide, polygons in file_data.items()
             }
-
+        self.use_only_polygons = use_only_polygons
+        self.use_only_patches = use_only_patches
         self.bboxes = pd.read_csv(csv_file)
-        self.bboxes["slide_name"], self.bboxes["xmin"], self.bboxes["ymin"] = zip(
+        self.bboxes["slide_name"], self.bboxes["x_min"], self.bboxes["y_min"] = zip(
             *self.bboxes["file_name"].apply(self._parse_filename)
         )
 
         self.bboxes["width"] = self.patch_size
         self.bboxes["height"] = self.patch_size
-        self.bboxes["xmax"] = self.bboxes["xmin"] + self.patch_size
-        self.bboxes["ymax"] = self.bboxes["ymin"] + self.patch_size
+        self.bboxes["x_max"] = self.bboxes["x_min"] + self.patch_size
+        self.bboxes["y_max"] = self.bboxes["y_min"] + self.patch_size
 
         self.bboxes["bbox"] = self.bboxes.apply(
-            lambda row: box(row["xmin"], row["ymin"], row["xmax"], row["ymax"]),
+            lambda row: box(row["x_min"], row["y_min"], row["x_max"], row["y_max"]),
             axis=1
         )
 
         self.bboxes["center"] = self.bboxes.apply(
-            lambda row: Point((row["xmin"] + row["xmax"]) / 2, (row["ymin"] + row["ymax"]) / 2),
+            lambda row: Point((row["x_min"] + row["x_max"]) / 2, (row["y_min"] + row["y_max"]) / 2),
             axis=1
         )
         self.bboxes["is_positive"] = self.bboxes["classification"].str.lower() == "positive"
@@ -97,8 +98,8 @@ class GroundTruthLabeler:
         if bbox is None:
             return [list(row["bbox"].exterior.coords) for _, row in positive_bboxes_in_slide.iterrows()] + [list(p.exterior.coords) for p in self.polygons[slide_name]]
 
-        xmin, ymin, width, height = bbox
-        query_box = box(xmin, ymin, xmin + width, ymin + height)
+        x_min, y_min, width, height = bbox
+        query_box = box(x_min, y_min, x_min + width, y_min + height)
         positive_regions = []
 
         for _, row in positive_bboxes_in_slide.iterrows():
@@ -122,31 +123,43 @@ class GroundTruthLabeler:
         for slide_name in slide_names:
             num_regions = len(self.get_positive_regions(slide_name, bbox=None))
             summary_data.append({"slide_name": slide_name, "n_gt_positive_regions": num_regions})
+        dataframe = pd.DataFrame(summary_data)
+        q1, median, q3 = dataframe['n_gt_positive_regions'].quantile([0.25, 0.5, 0.75])
 
-        return pd.DataFrame(summary_data)
+        def categorize_quartiles(n_annotations):
+            if n_annotations <= q1:
+                return 1
+            elif q1 < n_annotations <= median:
+                return 2
+            elif median < n_annotations <= q3:
+                return 3
+            else:
+                return 4
+
+        dataframe['category'] = dataframe['n_gt_positive_regions'].apply(lambda x: categorize_quartiles(x))
+        return dataframe
 
     def is_positive_patch(self, slide_name, bbox):
-        xmin, ymin, width, height = bbox
+        x_min, y_min, width, height = bbox
         if not (width == height == self.patch_size):
             raise ValueError("Not a valid patch")
-        # xmax, ymax = xmin + self.patch_size, ymin + self.patch_size
-        # query_box = box(xmin, ymin, xmax, ymax)
 
-        # 1. Check for exact match in CSV
-        exact_match = self.bboxes[
-            (self.bboxes["slide_name"] == slide_name) &
-            (self.bboxes["xmin"] == xmin) &
-            (self.bboxes["ymin"] == ymin)
-            ]
-        if not exact_match.empty:
-            return exact_match.iloc[0]["is_positive"]
+        if not self.use_only_polygons:
+            # 1. Check for exact match in CSV
+            exact_match = self.bboxes[
+                (self.bboxes["slide_name"] == slide_name) &
+                (self.bboxes["x_min"] == x_min) &
+                (self.bboxes["y_min"] == y_min)
+                ]
+            if not exact_match.empty:
+                return exact_match.iloc[0]["is_positive"]
 
         # 2. Check for polygon intersection
-        if self.intersects_with_gt_positive_polygon(slide_name, bbox):
+        if not self.use_only_patches and self.intersects_with_gt_positive_polygon(slide_name, bbox):
             return True
 
         # 3. Check for intersection with positive bounding boxes
-        if self.intersects_with_gt_positive_patch(slide_name, bbox):
+        if not self.use_only_polygons and self.intersects_with_gt_positive_patch(slide_name, bbox):
             return True
 
         return False
