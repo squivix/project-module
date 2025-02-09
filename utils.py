@@ -419,13 +419,17 @@ def is_textured_image(image, min_variance=40.0):
     return variance > min_variance
 
 
-def show_cv2_image(image, title=None):
+def show_cv2_image(image, title=None, cb=None, figsize=None):
     if image.shape[2] == 4:
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
     else:
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    plt.figure(figsize=(10, 6))
-    plt.imshow(image_rgb)
+
+    fig, ax = plt.subplots(1,figsize=figsize)
+    ax.imshow(image_rgb)
+    if cb is not None:
+        cb(fig, ax)
+
     plt.axis('off')
     if title is None:
         title = "image"
