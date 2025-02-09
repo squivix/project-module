@@ -425,7 +425,7 @@ def show_cv2_image(image, title=None, cb=None, figsize=None):
     else:
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    fig, ax = plt.subplots(1,figsize=figsize)
+    fig, ax = plt.subplots(1, figsize=figsize)
     ax.imshow(image_rgb)
     if cb is not None:
         cb(fig, ax)
@@ -586,3 +586,5 @@ def calculate_ratio_based_focal_alpha(dataset):
 
     ratio = num_positive / (num_positive + num_negative) if num_negative > 0 else float('inf')
     return 1 - ratio
+
+

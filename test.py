@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 from sklearn.metrics import precision_recall_curve, auc, f1_score, matthews_corrcoef, accuracy_score
 from torch.utils.data import DataLoader
 from torchmetrics.classification import BinaryCalibrationError
@@ -39,7 +40,8 @@ def test_classifier(model, test_dataset, device, batch_size=256):
         test_batches = iter(test_loader)
         batch_test_metrics = {m: np.empty(len(test_batches)) for m in metrics}
 
-        for i, (x_test, y_test) in enumerate(tqdm(test_batches, desc=f"Testing")):
+        for i, batch in enumerate(tqdm(test_batches, desc=f"Testing")):
+            x_test, y_test = batch[0], batch[1]
             x_test = x_test.to(device)
             y_test = y_test.to(device)
             test_logits = model.forward(x_test)
@@ -50,18 +52,18 @@ def test_classifier(model, test_dataset, device, batch_size=256):
             all_y_probs.append(test_logits.cpu())
 
             batch_test_metrics["loss"][i] = test_loss
-        all_y_true = torch.concatenate(all_y_true)
-        all_y_probs = torch.concatenate(all_y_probs)
+        all_y_true = torch.concatenate(all_y_true).cpu()
+        all_y_probs = torch.concatenate(all_y_probs).cpu()
 
     for m in metrics:
         if m in batch_test_metrics:
             test_metrics[m] = batch_test_metrics[m].mean()
 
-    precision, recall, thresholds = precision_recall_curve(all_y_true, all_y_probs)
-    pr_auc = auc(recall, precision)
+    precisions, recalls, thresholds = precision_recall_curve(all_y_true, all_y_probs)
+    pr_auc = auc(recalls, precisions)
 
     # Find optimal threshold based on F1-score
-    f1_scores = (2 * precision * recall) / (precision + recall + 1e-9)  # Avoid division by zero
+    f1_scores = (2 * precisions * recalls) / (precisions + recalls + 1e-9)  # Avoid division by zero
     optimal_idx = np.argmax(f1_scores)
     optimal_threshold = thresholds[optimal_idx] if optimal_idx < len(thresholds) else 0.5  # Handle edge case
 
@@ -69,19 +71,36 @@ def test_classifier(model, test_dataset, device, batch_size=256):
     all_y_preds = (all_y_probs >= optimal_threshold).int()
 
     # Calculate other metrics
-    precision_score = precision[optimal_idx]
-    recall_score = recall[optimal_idx]
     f1 = f1_score(all_y_true, all_y_preds)
     mcc = matthews_corrcoef(all_y_true, all_y_preds)
     accuracy = accuracy_score(all_y_true, all_y_preds)
     ece = BinaryCalibrationError(norm='l1')(all_y_probs.squeeze(), all_y_true.squeeze()).item()
 
     test_metrics["accuracy"] = accuracy
-    test_metrics["precision"] = precision_score
-    test_metrics["recall"] = recall_score
+    test_metrics["precision"] = precisions[optimal_idx]
+    test_metrics["recall"] = recalls[optimal_idx]
     test_metrics["f1"] = f1
     test_metrics["mcc"] = mcc
     test_metrics["ece"] = ece
     test_metrics["pr_auc"] = pr_auc
-
+    test_metrics["optimal_threshold"] = thresholds[optimal_idx]
+    test_metrics["precisions"] = precisions
+    test_metrics["recalls"] = recalls
     return test_metrics
+
+
+def plot_pr_curve(precisions, recalls):
+    # Compute AUC (Area Under Curve)
+    pr_auc = auc(recalls, precisions)
+
+    # Plot the PR curve
+    plt.figure(figsize=(8, 6))
+    plt.plot(recalls, precisions, marker='.', label=f'PR Curve (AUC = {pr_auc:.3f})')
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Precision-Recall Curve')
+    plt.legend()
+    plt.grid(True)
+
+    # Show the plot
+    plt.show()
