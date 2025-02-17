@@ -136,7 +136,7 @@ class GroundTruthLabeler:
             else:
                 return 4
 
-        dataframe['category'] = dataframe['n_gt_positive_regions'].apply(lambda x: categorize_quartiles(x))
+        dataframe['quartile'] = dataframe['n_gt_positive_regions'].apply(lambda x: categorize_quartiles(x))
         return dataframe
 
     def is_positive_patch(self, slide_name, bbox):
